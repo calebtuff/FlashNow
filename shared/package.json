@@ -1,0 +1,16 @@
+{
+  "name": "shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "schemas/index.js",
+  "exports": {
+    ".": "./schemas/index.js",
+    "./schemas": "./schemas/index.js",
+    "./schemas/*": "./schemas/*.js",
+    "./constants": "./constants/index.js"
+  },
+  "dependencies": {
+    "zod": "^3.22.4"
+  }
+}

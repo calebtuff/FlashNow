@@ -101,7 +101,7 @@ export const createAuction = async (req, res) => {
         .json({ success: false, message: 'startingBid must be a positive number' });
     }
 
-    if (!durationMinutes || durationMinutes < 5 || durationMinutes > 15) {
+    if (!durationMinutes || durationMinutes < 5 || durationMinutes > 30) {
       return res.status(400).json({
         success: false,
         message: 'durationMinutes must be between 5 and 15',
@@ -161,7 +161,57 @@ export const updateAuction = async (req, res) => {
 };
 
 export const deleteAuction = async (req, res) => {
-  return res
-    .status(501)
-    .json({ success: false, message: 'deleteAuction not implemented yet' });
+  try {
+    const { id } = req.params;
+
+    const requesterId = req.user?.id || req.body?.sellerId;
+    if (!requesterId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized (missing user). Provide auth or sellerId temporarily.',
+      });
+    }
+
+    const auction = await prisma.auction.findUnique({
+      where: { id },
+      select: { id: true, sellerId: true, status: true },
+    });
+
+    if (!auction) {
+      return res.status(404).json({ success: false, message: 'Auction not found' });
+    }
+
+    if (auction.sellerId !== requesterId) {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+
+    const bidCount = await prisma.bid.count({ where: { auctionId: id } });
+    if (bidCount > 0) {
+      return res.status(409).json({
+        success: false,
+        message: 'Auction has bids and cannot be cancelled',
+      });
+    }
+
+    if (auction.status === 'cancelled') {
+      return res.status(200).json({ success: true, message: 'Auction already cancelled' });
+    }
+
+    if (auction.status === 'completed') {
+      return res.status(409).json({
+        success: false,
+        message: 'Completed auctions cannot be cancelled',
+      });
+    }
+
+    await prisma.auction.update({
+      where: { id },
+      data: { status: 'cancelled' },
+    });
+
+    return res.status(200).json({ success: true, message: 'Auction cancelled' });
+  } catch (error) {
+    console.error('deleteAuction error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to cancel auction' });
+  }
 };

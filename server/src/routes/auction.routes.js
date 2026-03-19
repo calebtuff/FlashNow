@@ -1,5 +1,15 @@
 import express from 'express';
-import { getAllAuctions, getAuctionById, createAuction, updateAuction, deleteAuction } from '../controllers/auction.controller.js';
+import {
+  getAllAuctions,
+  getAuctionById,
+  createAuction,
+  updateAuction,
+  deleteAuction,
+  getMySellingAuctions,
+  getMyBids,
+  getFeed,
+  searchAuctions,
+} from '../controllers/auction.controller.js';
 
 const router = express.Router();
 
@@ -7,6 +17,18 @@ const router = express.Router();
 
 //get all auctions
 router.get("/", getAllAuctions);
+
+// Get auctions for the current seller
+router.get("/my/selling", getMySellingAuctions);
+
+// Get bids for the current buyer
+router.get("/my/bids", getMyBids);
+
+// For You feed (basic MVP)
+router.get("/feed", getFeed);
+
+// Search auctions (basic MVP)
+router.get("/search", searchAuctions);
 
 //get auction by id
 router.get("/:id", getAuctionById);

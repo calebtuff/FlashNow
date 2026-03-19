@@ -215,3 +215,241 @@ export const deleteAuction = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to cancel auction' });
   }
 };
+
+const formatAuctionForApi = auction => {
+  if (!auction) return auction;
+  return {
+    ...auction,
+    startingBid: parseFloat(auction.startingBid),
+    buyNowPrice: auction.buyNowPrice ? parseFloat(auction.buyNowPrice) : null,
+    currentBid: auction.currentBid ? parseFloat(auction.currentBid) : null,
+  };
+};
+
+export const getMySellingAuctions = async (req, res) => {
+  try {
+    const userId = req.user?.id || req.query?.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized (missing user). Provide auth or userId temporarily.',
+      });
+    }
+
+    const auctions = await prisma.auction.findMany({
+      where: { sellerId: userId },
+      include: {
+        category: true,
+        _count: { select: { bids: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return res.json({
+      success: true,
+      auctions: auctions.map(formatAuctionForApi),
+    });
+  } catch (error) {
+    console.error('getMySellingAuctions error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch auctions' });
+  }
+};
+
+export const getMyBids = async (req, res) => {
+  try {
+    const userId = req.user?.id || req.query?.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized (missing user). Provide auth or userId temporarily.',
+      });
+    }
+
+    const bids = await prisma.bid.findMany({
+      where: { userId },
+      include: {
+        auction: {
+          include: {
+            seller: {
+              select: { id: true, username: true, avatarUrl: true },
+            },
+            category: true,
+          },
+        },
+      },
+      orderBy: { placedAt: 'desc' },
+    });
+
+    const formatted = bids.map(b => ({
+      ...b,
+      amount: parseFloat(b.amount),
+      auction: formatAuctionForApi(b.auction),
+    }));
+
+    return res.json({
+      success: true,
+      bids: formatted,
+    });
+  } catch (error) {
+    console.error('getMyBids error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch bids' });
+  }
+};
+
+export const getFeed = async (req, res) => {
+  try {
+    const page = Number(req.query.page || 1);
+    const limit = Number(req.query.limit || 20);
+    const skip = (page - 1) * limit;
+
+    const now = new Date();
+    const soon = new Date(now.getTime() + 24 * 60 * 60 * 1000); // next 24h
+    const endingSoon = new Date(now.getTime() + 30 * 60 * 1000); // next 30m
+
+    // Main feed: live + scheduled starting soon
+    const feedAuctions = await prisma.auction.findMany({
+      where: {
+        OR: [{ status: 'live' }, { status: 'scheduled', startsAt: { lte: soon } }],
+      },
+      include: {
+        seller: { select: { id: true, username: true, avatarUrl: true } },
+        category: true,
+        _count: { select: { bids: true } },
+      },
+      orderBy: { endsAt: 'asc' },
+      skip,
+      take: limit,
+    });
+
+    // Trending MVP: take some live auctions and rank by bid count in JS
+    const trendingPool = await prisma.auction.findMany({
+      where: { status: 'live' },
+      include: {
+        seller: { select: { id: true, username: true, avatarUrl: true } },
+        category: true,
+        _count: { select: { bids: true } },
+      },
+      orderBy: { endsAt: 'asc' },
+      take: 50,
+    });
+
+    const trendingAuctions = trendingPool
+      .slice()
+      .sort((a, b) => b._count.bids - a._count.bids)
+      .slice(0, 5);
+
+    const endingSoonAuctions = await prisma.auction.findMany({
+      where: { status: 'live', endsAt: { lte: endingSoon } },
+      include: {
+        seller: { select: { id: true, username: true, avatarUrl: true } },
+        category: true,
+        _count: { select: { bids: true } },
+      },
+      orderBy: { endsAt: 'asc' },
+      take: 5,
+    });
+
+    return res.json({
+      success: true,
+      feed: feedAuctions.map(formatAuctionForApi),
+      trending: trendingAuctions.map(formatAuctionForApi),
+      endingSoon: endingSoonAuctions.map(formatAuctionForApi),
+    });
+  } catch (error) {
+    console.error('getFeed error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch feed' });
+  }
+};
+
+export const searchAuctions = async (req, res) => {
+  try {
+    const q = req.query.q?.toString();
+    const categoryId = req.query.categoryId?.toString();
+    const status = req.query.status?.toString();
+
+    const minPrice = req.query.minPrice ? Number(req.query.minPrice) : undefined;
+    const maxPrice = req.query.maxPrice ? Number(req.query.maxPrice) : undefined;
+
+    const sortBy = req.query.sortBy?.toString();
+    const page = Number(req.query.page || 1);
+    const limit = Number(req.query.limit || 20);
+    const skip = (page - 1) * limit;
+
+    // Basic search MVP:
+    // - q searches title/description
+    // - price filters apply to startingBid (MVP approximation)
+    const where = {};
+
+    if (categoryId) where.categoryId = categoryId;
+
+    if (status) {
+      where.status = status;
+    } else {
+      where.status = { in: ['live', 'scheduled'] };
+    }
+
+    if (q) {
+      where.OR = [
+        { title: { contains: q, mode: 'insensitive' } },
+        { description: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+
+    if (minPrice || maxPrice) {
+      where.startingBid = {
+        ...(minPrice ? { gte: minPrice } : {}),
+        ...(maxPrice ? { lte: maxPrice } : {}),
+      };
+    }
+
+    let orderBy = { createdAt: 'desc' };
+    switch (sortBy) {
+      case 'ending_soon':
+        orderBy = { endsAt: 'asc' };
+        break;
+      case 'price_low':
+        orderBy = { startingBid: 'asc' };
+        break;
+      case 'price_high':
+        orderBy = { startingBid: 'desc' };
+        break;
+      case 'newest':
+        orderBy = { createdAt: 'desc' };
+        break;
+      default:
+        orderBy = { createdAt: 'desc' };
+    }
+
+    const [auctions, total] = await Promise.all([
+      prisma.auction.findMany({
+        where,
+        include: {
+          seller: { select: { id: true, username: true, avatarUrl: true } },
+          category: true,
+          _count: { select: { bids: true } },
+        },
+        orderBy,
+        skip,
+        take: limit,
+      }),
+      prisma.auction.count({ where }),
+    ]);
+
+    return res.json({
+      success: true,
+      query: { q, categoryId, status, minPrice, maxPrice, sortBy, page, limit },
+      results: auctions.map(formatAuctionForApi),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    console.error('searchAuctions error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to search auctions' });
+  }
+};

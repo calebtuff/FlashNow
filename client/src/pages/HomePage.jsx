@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import Icon from '../components/Icon.jsx';
+import CountdownStrip from '../components/CountdownStrip.jsx';
 import { api } from '../services/api.js';
+import { bidCountOf, currentPrice, imageOf, money } from '../utils/auction.js';
 
 const PILL_FILTERS = [
   { key: 'all', label: 'All', match: () => true },
@@ -59,73 +61,6 @@ const PILL_FILTERS = [
   },
 ];
 
-function money(n) {
-  if (n === null || n === undefined) return '—';
-  const v = typeof n === 'number' ? n : Number.parseFloat(String(n));
-  if (Number.isNaN(v)) return '—';
-  return v.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
-}
-
-function bidCountOf(a) {
-  return a._count?.bids ?? a.bidCount ?? 0;
-}
-
-function currentPrice(a) {
-  if (a.currentBid != null) {
-    const v = typeof a.currentBid === 'number' ? a.currentBid : Number.parseFloat(String(a.currentBid));
-    if (!Number.isNaN(v)) return v;
-  }
-  const s = typeof a.startingBid === 'number' ? a.startingBid : Number.parseFloat(String(a.startingBid));
-  return Number.isNaN(s) ? 0 : s;
-}
-
-function useCountdown(endIso) {
-  const end = endIso ? new Date(endIso).getTime() : null;
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (!end) return undefined;
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, [end]);
-
-  if (!end) {
-    return { ended: false, label: '—', parts: null };
-  }
-
-  const diff = end - now;
-  if (diff <= 0) {
-    return { ended: true, label: 'Ended', parts: { d: 0, h: 0, m: 0, s: 0 } };
-  }
-
-  const d = Math.floor(diff / 86400000);
-  const h = Math.floor((diff % 86400000) / 3600000);
-  const m = Math.floor((diff % 3600000) / 60000);
-  const s = Math.floor((diff % 60000) / 1000);
-  return { ended: false, label: null, parts: { d, h, m, s } };
-}
-
-function CountdownStrip({ endsAt }) {
-  const { ended, parts } = useCountdown(endsAt);
-  if (ended || !parts) {
-    return <span className="text-xs font-semibold text-white">{ended ? 'Ended' : '—'}</span>;
-  }
-  const unit = (v, lab) => (
-    <span className="inline-flex flex-col items-center px-1">
-      <span className="font-mono text-[11px] font-bold tabular-nums text-white">{String(v).padStart(2, '0')}</span>
-      <span className="text-[9px] font-semibold uppercase tracking-wide text-white/70">{lab}</span>
-    </span>
-  );
-  return (
-    <div className="flex items-center justify-center gap-0.5">
-      {unit(parts.d, 'days')}
-      {unit(parts.h, 'hrs')}
-      {unit(parts.m, 'min')}
-      {unit(parts.s, 'sec')}
-    </div>
-  );
-}
-
 function cardBadges(a, endsAt) {
   const bids = bidCountOf(a);
   const end = endsAt ? new Date(endsAt).getTime() : null;
@@ -138,7 +73,7 @@ function cardBadges(a, endsAt) {
 }
 
 function AuctionCard({ a }) {
-  const img = Array.isArray(a.images) && a.images.length > 0 ? a.images[0] : `https://picsum.photos/seed/${a.id}/600/600`;
+  const img = imageOf(a, 600);
   const bids = bidCountOf(a);
   const badges = cardBadges(a, a.endsAt);
   const cat = a.category?.name ? String(a.category.name).toUpperCase() : 'AUCTION';

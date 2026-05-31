@@ -24,12 +24,9 @@ export default function Navbar() {
           <NavLink to="/" end className={centerNavClass}>
             Browse
           </NavLink>
-          <span
-            className="cursor-default rounded-full px-4 py-2 text-sm font-semibold text-neutral-400"
-            title="Coming soon"
-          >
+          <NavLink to="/sell" className={centerNavClass}>
             Create
-          </span>
+          </NavLink>
           <span
             className="cursor-default rounded-full px-4 py-2 text-sm font-semibold text-neutral-400"
             title="Coming soon"

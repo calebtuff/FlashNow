@@ -208,13 +208,12 @@ export default function HomePage() {
               Start bidding
               <Icon name="arrow_forward" className="text-[20px]" />
             </Link>
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-xl border-2 border-neutral-900 bg-transparent px-6 py-3 text-sm font-bold text-neutral-900 transition-colors hover:bg-white/50"
-              title="Coming soon"
+            <Link
+              to="/sell"
+              className="inline-flex items-center gap-2 rounded-xl border-2 border-neutral-900 bg-transparent px-6 py-3 text-sm font-bold text-neutral-900 no-underline transition-colors hover:bg-white/50"
             >
               Sell something
-            </button>
+            </Link>
           </div>
           <dl className="mt-10 grid max-w-lg grid-cols-3 gap-4 border-t border-neutral-300/60 pt-8">
             <div>

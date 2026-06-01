@@ -1,8 +1,23 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+const envBase = import.meta.env.VITE_API_BASE_URL;
+
+function getApiBase() {
+  if (envBase !== undefined && envBase !== '') {
+    return String(envBase).replace(/\/$/, '');
+  }
+  return '/api';
+}
 
 function buildUrl(path, query) {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  const url = new URL(`${API_BASE_URL}${normalizedPath}`);
+  const base = getApiBase();
+  let url;
+  if (base.startsWith('http')) {
+    url = new URL(`${base}${normalizedPath}`);
+  } else {
+    const origin =
+      typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+    url = new URL(`${base}${normalizedPath}`, origin);
+  }
 
   if (query && typeof query === 'object') {
     Object.entries(query).forEach(([key, value]) => {
@@ -60,5 +75,4 @@ export const api = {
   delete: (path, options) => request('DELETE', path, options),
 };
 
-export { API_BASE_URL };
-
+export { getApiBase };

@@ -41,3 +41,5 @@ router.put("/:id", updateAuction);
 
 //delete auction
 router.delete("/:id", deleteAuction);
+
+export default router;

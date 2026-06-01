@@ -276,6 +276,7 @@ export const getMyBids = async (req, res) => {
               select: { id: true, username: true, avatarUrl: true },
             },
             category: true,
+            _count: { select: { bids: true } },
           },
         },
       },

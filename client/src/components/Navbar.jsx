@@ -27,18 +27,12 @@ export default function Navbar() {
           <NavLink to="/sell" className={centerNavClass}>
             Create
           </NavLink>
-          <span
-            className="cursor-default rounded-full px-4 py-2 text-sm font-semibold text-neutral-400"
-            title="Coming soon"
-          >
+          <NavLink to="/my-auctions" className={centerNavClass}>
             My Auctions
-          </span>
-          <span
-            className="cursor-default rounded-full px-4 py-2 text-sm font-semibold text-neutral-400"
-            title="Coming soon"
-          >
+          </NavLink>
+          <NavLink to="/my-bids" className={centerNavClass}>
             My Bids
-          </span>
+          </NavLink>
         </div>
 
         <div className="flex items-center gap-3">

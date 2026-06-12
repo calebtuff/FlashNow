@@ -18,46 +18,54 @@ export default function AuctionCard({ a }) {
   const img = imageOf(a, 600);
   const bids = bidCountOf(a);
   const badges = cardBadges(a);
-  const cat = a.category?.name ? String(a.category.name).toUpperCase() : 'AUCTION';
+  const cat = a.category?.name ? a.category.name : 'Auction';
+  const dots = Array.isArray(a.images) ? Math.min(a.images.length, 3) : 0;
 
   return (
-    <article className="flex flex-col overflow-hidden rounded-2xl border border-neutral-200/80 bg-white shadow-sm transition-shadow hover:shadow-md">
-      <div className="relative aspect-square bg-neutral-100">
+    <article className="flex flex-col rounded-3xl bg-white p-3 shadow-sm transition-shadow hover:shadow-md">
+      <div className="relative aspect-square overflow-hidden rounded-2xl bg-neutral-100">
         <img src={img} alt="" className="h-full w-full object-cover" />
-        <div className="absolute left-2 top-2 flex flex-wrap gap-1">
+        <div className="absolute left-3 top-3 flex flex-wrap gap-1">
           {badges.map((b) => (
-            <span key={b.key} className={`rounded px-2 py-0.5 text-[10px] font-extrabold tracking-wide ${b.className}`}>
+            <span key={b.key} className={`rounded-full px-2.5 py-1 text-[10px] font-extrabold tracking-wide ${b.className}`}>
               {b.text}
             </span>
           ))}
         </div>
         <button
           type="button"
-          className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full border border-white/35 bg-white/15 text-white shadow-sm backdrop-blur-sm transition-colors hover:bg-white/25"
+          className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-white text-neutral-700 shadow-sm transition-colors hover:text-red-500"
           aria-label="Save"
         >
-          <Icon name="favorite" className="text-[20px] drop-shadow-sm" />
+          <Icon name="favorite" className="text-[18px]" />
         </button>
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-3 pb-2 pt-8">
-          <div className="flex items-end justify-between gap-2">
-            <CountdownStrip endsAt={a.endsAt} />
-            <span className="shrink-0 rounded-full bg-black/40 px-2 py-0.5 text-[10px] font-bold text-white backdrop-blur">
-              {bids} bids
-            </span>
+        {dots > 1 && (
+          <div className="absolute inset-x-0 bottom-3 flex justify-center gap-1.5">
+            {Array.from({ length: dots }).map((_, i) => (
+              <span
+                key={i}
+                className={`h-1.5 w-1.5 rounded-full ${i === 0 ? 'bg-emerald-500' : 'bg-white/80'}`}
+              />
+            ))}
           </div>
-        </div>
+        )}
       </div>
-      <div className="flex flex-1 flex-col p-4">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-500">{cat}</p>
-        <h3 className="mt-1 font-headline text-base font-bold leading-snug text-neutral-900 line-clamp-2">{a.title}</h3>
+      <div className="flex flex-1 flex-col px-2 pb-1 pt-3">
+        <p className="text-xs font-semibold text-emerald-600">{cat}</p>
+        <h3 className="mt-0.5 font-display text-base font-semibold leading-snug tracking-tight text-neutral-900 line-clamp-2">{a.title}</h3>
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <span className="inline-flex items-center rounded-lg bg-neutral-900 px-2 py-1">
+            <CountdownStrip endsAt={a.endsAt} />
+          </span>
+          <span className="shrink-0 text-xs font-semibold text-neutral-500">{bids} bids</span>
+        </div>
         <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">Current bid</p>
-        <p className="font-headline text-lg font-extrabold text-neutral-900">{money(currentPrice(a))}</p>
+        <p className="font-display text-lg font-bold tracking-tight text-neutral-900">{money(currentPrice(a))}</p>
         <Link
           to={`/auctions/${a.id}`}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-neutral-900 py-3 text-sm font-bold text-white no-underline transition-colors hover:bg-neutral-800"
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-neutral-900 py-3 text-sm font-bold text-white no-underline transition-colors hover:bg-neutral-800"
         >
           View auction
-          <Icon name="arrow_forward" className="text-[18px]" />
         </Link>
       </div>
     </article>

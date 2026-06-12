@@ -90,9 +90,9 @@ function FeaturedFallback() {
         </div>
       </div>
       <div className="p-5">
-        <h3 className="font-headline text-xl font-extrabold text-neutral-900">Tiffany &amp; Co. Solitaire</h3>
+        <h3 className="font-display text-xl font-semibold tracking-tight text-neutral-900">Tiffany &amp; Co. Solitaire</h3>
         <p className="mt-4 text-xs font-bold uppercase tracking-wide text-neutral-500">Current bid</p>
-        <p className="font-headline text-2xl font-extrabold text-neutral-900">$9,200</p>
+        <p className="font-display text-2xl font-bold tracking-tight text-neutral-900">$9,200</p>
         <p className="mt-1 text-sm text-neutral-500">22 bids</p>
       </div>
     </div>
@@ -155,12 +155,7 @@ export default function HomePage() {
               Sell something
             </Link>
           </div>
-          <dl className="mt-10 grid max-w-lg grid-cols-3 gap-4 border-t border-neutral-300/60 pt-8">
-            <div>
-              <dt className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Auctions</dt>
-              <dd className="mt-1 font-headline text-lg font-extrabold text-neutral-900">42K+</dd>
-              <dd className="text-xs text-neutral-500">hosted</dd>
-            </div>
+          <dl className="mt-10 grid max-w-lg grid-cols-2 gap-4 border-t border-neutral-300/60 pt-8">
             <div>
               <dt className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Trust</dt>
               <dd className="mt-1 font-headline text-lg font-extrabold text-neutral-900">98.7%</dd>
@@ -207,9 +202,9 @@ export default function HomePage() {
                 </div>
               </div>
               <div className="p-5">
-                <h2 className="font-headline text-xl font-extrabold text-neutral-900">{featured.title}</h2>
+                <h2 className="font-display text-xl font-semibold tracking-tight text-neutral-900">{featured.title}</h2>
                 <p className="mt-4 text-xs font-bold uppercase tracking-wide text-neutral-500">Current bid</p>
-                <p className="font-headline text-2xl font-extrabold text-neutral-900">{money(currentPrice(featured))}</p>
+                <p className="font-display text-2xl font-bold tracking-tight text-neutral-900">{money(currentPrice(featured))}</p>
                 <p className="mt-1 text-sm text-neutral-500">{bidCountOf(featured)} bids</p>
                 <Link
                   to={`/auctions/${featured.id}`}
@@ -292,6 +287,67 @@ export default function HomePage() {
             ))}
           </div>
         )}
+      </section>
+
+      <section className="rounded-3xl border border-neutral-200 bg-white p-8 sm:p-10">
+        <h2 className="font-headline text-2xl font-extrabold text-neutral-900">How it works</h2>
+        <p className="mt-1 text-sm text-neutral-600">Win authentic items in three simple steps.</p>
+        <div className="mt-8 grid gap-8 sm:grid-cols-3">
+          {[
+            {
+              icon: 'search',
+              title: 'Discover',
+              text: 'Browse live auctions across watches, sneakers, art, and more — all verified.',
+            },
+            {
+              icon: 'gavel',
+              title: 'Bid in real time',
+              text: 'Place your bid and watch the countdown. Get outbid? Jump back in instantly.',
+            },
+            {
+              icon: 'local_shipping',
+              title: 'Win & get it fast',
+              text: 'Win, pay securely, and receive your item quickly with full buyer protection.',
+            },
+          ].map((step, i) => (
+            <div key={step.title} className="flex flex-col">
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-neutral-900 text-white">
+                  <Icon name={step.icon} className="text-[20px]" />
+                </span>
+                <span className="font-display text-sm font-bold uppercase tracking-wide text-neutral-400">
+                  Step {i + 1}
+                </span>
+              </div>
+              <h3 className="mt-4 font-display text-lg font-semibold tracking-tight text-neutral-900">{step.title}</h3>
+              <p className="mt-1 text-sm leading-relaxed text-neutral-600">{step.text}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <h2 className="font-headline text-2xl font-extrabold text-neutral-900">Why FlashNow</h2>
+        <p className="mt-1 text-sm text-neutral-600">Built for trust, speed, and authenticity.</p>
+        <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            { icon: 'verified', title: 'Verified authenticity', text: 'Every seller and item is vetted before going live.' },
+            { icon: 'shield', title: 'Buyer protection', text: 'Your payment is protected from bid to delivery.' },
+            { icon: 'bolt', title: 'Real-time bidding', text: 'Live countdowns and instant updates as bids land.' },
+            { icon: 'payments', title: 'Fast payouts', text: 'Sellers get paid quickly — typically within 24 hours.' },
+          ].map((f) => (
+            <div
+              key={f.title}
+              className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
+            >
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-neutral-100 text-neutral-900">
+                <Icon name={f.icon} className="text-[22px]" />
+              </span>
+              <h3 className="mt-4 font-display text-base font-semibold tracking-tight text-neutral-900">{f.title}</h3>
+              <p className="mt-1 text-sm leading-relaxed text-neutral-600">{f.text}</p>
+            </div>
+          ))}
+        </div>
       </section>
     </div>
   );

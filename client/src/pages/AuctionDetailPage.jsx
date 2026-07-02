@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from '../components/Icon.jsx';
 import CountdownStrip from '../components/CountdownStrip.jsx';
 import { api } from '../services/api.js';
+import { getCurrentUserId } from '../services/currentUser.js';
 import { bidCountOf, currentPrice, imageOf, money } from '../utils/auction.js';
 
 function Skeleton() {
@@ -43,18 +44,27 @@ function SellerCard({ seller }) {
 
 function BidBox({ auction }) {
   const queryClient = useQueryClient();
+  const userId = getCurrentUserId();
   const minNext = currentPrice(auction) + 1;
   const [amount, setAmount] = useState('');
 
   const endTime = auction.endsAt ? new Date(auction.endsAt).getTime() : null;
   const ended = endTime ? endTime <= Date.now() : false;
 
+  const walletQuery = useQuery({
+    queryKey: ['wallet', userId],
+    queryFn: () => api.get('/wallet', { query: { userId } }),
+    enabled: !!userId,
+  });
+  const available = walletQuery.data?.wallet?.availableBalance;
+
   const placeBid = useMutation({
-    mutationFn: (value) => api.post(`/auctions/${auction.id}/bids`, { amount: value }),
+    mutationFn: (value) => api.post(`/auctions/${auction.id}/bids`, { amount: value, userId }),
     onSuccess: () => {
       setAmount('');
       queryClient.invalidateQueries({ queryKey: ['auction', auction.id] });
       queryClient.invalidateQueries({ queryKey: ['auctions'] });
+      queryClient.invalidateQueries({ queryKey: ['wallet'] });
     },
   });
 
@@ -102,6 +112,11 @@ function BidBox({ auction }) {
       <p className="mt-2 text-xs text-neutral-500">
         {ended ? 'This auction has ended.' : `Enter ${money(minNext)} or more.`}
       </p>
+      {userId && typeof available === 'number' && (
+        <p className="mt-1 text-xs text-neutral-500">
+          Available balance: <span className="font-semibold text-neutral-700">{money(available)}</span>
+        </p>
+      )}
       {tooLow && <p className="mt-1 text-xs font-semibold text-red-600">Bid must be at least {money(minNext)}.</p>}
       {placeBid.isError && (
         <p className="mt-1 text-xs font-semibold text-red-600">

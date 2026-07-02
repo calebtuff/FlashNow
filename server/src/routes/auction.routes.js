@@ -9,6 +9,7 @@ import {
   getMyBids,
   getFeed,
   searchAuctions,
+  placeBid,
 } from '../controllers/auction.controller.js';
 
 const router = express.Router();
@@ -32,6 +33,9 @@ router.get("/search", searchAuctions);
 
 //get auction by id
 router.get("/:id", getAuctionById);
+
+//place a bid on an auction
+router.post("/:id/bids", placeBid);
 
 //create auction
 router.post("/", createAuction);

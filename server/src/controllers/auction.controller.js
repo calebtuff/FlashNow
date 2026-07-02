@@ -1,3 +1,5 @@
+import { placeBidSchema } from 'shared';
+import { MIN_BID_INCREMENT } from 'shared/constants';
 import prisma from '../lib/prisma.js';
 
 export const getAllAuctions = async (req, res) => {
@@ -128,7 +130,7 @@ export const createAuction = async (req, res) => {
         startingBid,
         buyNowPrice: buyNowPrice || null,
         durationMinutes,
-        status: 'scheduled',
+        status: startsAtDate <= new Date() ? 'live' : 'scheduled',
         startsAt: startsAtDate,
         endsAt,
       },
@@ -151,6 +153,120 @@ export const createAuction = async (req, res) => {
   } catch (error) {
     console.error('createAuction error:', error);
     res.status(500).json({ success: false, message: 'Failed to create auction' });
+  }
+};
+
+export const placeBid = async (req, res) => {
+  try {
+    const userId = req.user?.id || req.body?.userId;
+    const { id: auctionId } = req.params;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Missing userId (temporary until auth is added).',
+      });
+    }
+
+    const amount = typeof req.body?.amount === 'string' ? Number(req.body.amount) : req.body?.amount;
+    placeBidSchema.parse({ auctionId, amount });
+
+    const result = await prisma.$transaction(async (tx) => {
+      const auction = await tx.auction.findUnique({ where: { id: auctionId } });
+      const now = new Date();
+
+      if (!auction) throw { httpCode: 404, httpMessage: 'Auction not found' };
+      if (auction.sellerId === userId) throw { httpCode: 403, httpMessage: 'You cannot bid on your own auction' };
+      if (auction.currentWinnerId === userId) throw { httpCode: 400, httpMessage: 'You are already the highest bidder' };
+
+      // Live-only: reject anything already finished or past its end time.
+      const terminal = ['ended', 'completed', 'cancelled'];
+      if (terminal.includes(auction.status) || new Date(auction.endsAt) <= now) {
+        throw { httpCode: 400, httpMessage: 'Auction has ended' };
+      }
+      // Reject auctions that have not reached their start time yet.
+      if (new Date(auction.startsAt) > now) {
+        throw { httpCode: 400, httpMessage: 'Auction has not started yet' };
+      }
+      // At this point the auction is within its live window.
+
+      const current = Number(auction.currentBid ?? auction.startingBid);
+      const minNext = current + MIN_BID_INCREMENT;
+      if (amount < minNext) {
+        throw { httpCode: 400, httpMessage: `Bid must be at least ${minNext}` };
+      }
+
+      // Ensure the bidder has enough AVAILABLE balance (balance minus existing holds).
+      let wallet = await tx.wallet.findUnique({ where: { userId } });
+      if (!wallet) {
+        wallet = await tx.wallet.create({ data: { userId, balance: 0, heldBalance: 0 } });
+      }
+      const available = Number(wallet.balance) - Number(wallet.heldBalance);
+      if (amount > available) {
+        throw { httpCode: 400, httpMessage: 'Insufficient wallet balance. Top up to bid.' };
+      }
+
+      // Hold the new bidder's funds.
+      await tx.wallet.update({
+        where: { id: wallet.id },
+        data: { heldBalance: { increment: amount } },
+      });
+      await tx.walletTransaction.create({
+        data: { walletId: wallet.id, type: 'hold', amount, auctionId, description: 'Bid hold' },
+      });
+
+      // Release the previous leader's hold (a different user, guaranteed by the guard above).
+      if (auction.currentWinnerId && auction.currentBid != null) {
+        const prevWallet = await tx.wallet.findUnique({ where: { userId: auction.currentWinnerId } });
+        if (prevWallet) {
+          await tx.wallet.update({
+            where: { id: prevWallet.id },
+            data: { heldBalance: { decrement: Number(auction.currentBid) } },
+          });
+          await tx.walletTransaction.create({
+            data: {
+              walletId: prevWallet.id,
+              type: 'release',
+              amount: Number(auction.currentBid),
+              auctionId,
+              description: 'Outbid release',
+            },
+          });
+        }
+      }
+
+      // Race-safe update: only succeeds if currentBid is unchanged since we read it.
+      // Also lazily promotes a scheduled auction whose start time has passed to 'live'.
+      const updated = await tx.auction.updateMany({
+        where:
+          auction.currentBid === null
+            ? { id: auctionId, currentBid: null }
+            : { id: auctionId, currentBid: auction.currentBid },
+        data: { currentBid: amount, currentWinnerId: userId, status: 'live' },
+      });
+      if (updated.count === 0) {
+        throw { httpCode: 409, httpMessage: 'Someone just placed a higher bid. Please try again.' };
+      }
+
+      const bid = await tx.bid.create({ data: { auctionId, userId, amount } });
+      return { bid, currentBid: amount };
+    });
+
+    return res.status(201).json({
+      success: true,
+      bid: { ...result.bid, amount: parseFloat(result.bid.amount) },
+      currentBid: result.currentBid,
+      currentWinnerId: userId,
+    });
+  } catch (error) {
+    if (error?.httpCode) {
+      return res.status(error.httpCode).json({ success: false, message: error.httpMessage });
+    }
+    if (error?.name === 'ZodError') {
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: error.errors });
+    }
+    console.error('placeBid error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to place bid' });
   }
 };
 

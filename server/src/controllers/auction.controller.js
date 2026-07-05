@@ -1,6 +1,8 @@
 import { placeBidSchema } from 'shared';
 import { MIN_BID_INCREMENT } from 'shared/constants';
 import prisma from '../lib/prisma.js';
+import { trySettleAuctionIfExpired } from '../services/auctionEngine.js';
+import { computeExtendedEndsAt } from '../utils/bidExtension.js';
 
 export const getAllAuctions = async (req, res) => {
   try {
@@ -32,6 +34,8 @@ export const getAllAuctions = async (req, res) => {
 export const getAuctionById = async (req, res) => {
   try {
     const { id } = req.params;
+
+    await trySettleAuctionIfExpired(id);
 
     const auction = await prisma.auction.findUnique({
       where: { id },
@@ -235,6 +239,10 @@ export const placeBid = async (req, res) => {
         }
       }
 
+      // Anti-snipe: bid in the final minute extends the auction.
+      const nextEndsAt = computeExtendedEndsAt(auction.endsAt, now);
+      const extended = nextEndsAt.getTime() !== new Date(auction.endsAt).getTime();
+
       // Race-safe update: only succeeds if currentBid is unchanged since we read it.
       // Also lazily promotes a scheduled auction whose start time has passed to 'live'.
       const updated = await tx.auction.updateMany({
@@ -242,14 +250,19 @@ export const placeBid = async (req, res) => {
           auction.currentBid === null
             ? { id: auctionId, currentBid: null }
             : { id: auctionId, currentBid: auction.currentBid },
-        data: { currentBid: amount, currentWinnerId: userId, status: 'live' },
+        data: {
+          currentBid: amount,
+          currentWinnerId: userId,
+          status: 'live',
+          endsAt: nextEndsAt,
+        },
       });
       if (updated.count === 0) {
         throw { httpCode: 409, httpMessage: 'Someone just placed a higher bid. Please try again.' };
       }
 
       const bid = await tx.bid.create({ data: { auctionId, userId, amount } });
-      return { bid, currentBid: amount };
+      return { bid, currentBid: amount, endsAt: nextEndsAt, extended };
     });
 
     return res.status(201).json({
@@ -257,6 +270,8 @@ export const placeBid = async (req, res) => {
       bid: { ...result.bid, amount: parseFloat(result.bid.amount) },
       currentBid: result.currentBid,
       currentWinnerId: userId,
+      endsAt: result.endsAt,
+      extended: result.extended,
     });
   } catch (error) {
     if (error?.httpCode) {

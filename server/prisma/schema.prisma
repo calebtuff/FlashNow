@@ -61,6 +61,7 @@ enum TransactionType {
   hold
   release
   debit
+  credit
   refund
   withdraw
 }

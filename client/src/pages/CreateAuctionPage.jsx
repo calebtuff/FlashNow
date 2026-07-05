@@ -140,13 +140,6 @@ export default function CreateAuctionPage() {
         </p>
       </div>
 
-      {!sellerId && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-          No dev user is set, so creating will be blocked. Add <code className="font-mono">VITE_DEV_USER_ID</code> (a real
-          users.id) to <code className="font-mono">client/.env</code> and restart the dev server.
-        </div>
-      )}
-
       <form onSubmit={handleSubmit} className="space-y-5 rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
         <div>
           <label className={labelClass} htmlFor="title">Title</label>

@@ -82,14 +82,7 @@ export default function MyAuctionsPage() {
         </Link>
       </div>
 
-      {!userId ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-          No dev user is set. Add <code className="font-mono">VITE_DEV_USER_ID</code> (a real users.id) to{' '}
-          <code className="font-mono">client/.env</code> and restart the dev server to see your listings.
-        </div>
-      ) : (
-        <>
-          <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2">
             {STATUS_FILTERS.map((f) => (
               <button
                 key={f.key}
@@ -152,8 +145,6 @@ export default function MyAuctionsPage() {
               ))}
             </div>
           )}
-        </>
-      )}
     </div>
   );
 }

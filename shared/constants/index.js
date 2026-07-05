@@ -61,6 +61,12 @@ export const AUCTION_DURATIONS = [5, 10, 15];
 
 export const MIN_BID_INCREMENT = 1;
 
+/** If a bid lands within this window before endsAt, the auction is extended. */
+export const BID_EXTENSION_WINDOW_MS = 60_000;
+
+/** How long to extend the auction when anti-snipe triggers. */
+export const BID_EXTENSION_MS = 60_000;
+
 export const WALLET_LIMITS = {
   MIN_TOPUP: 5,
   MAX_TOPUP: 10000,

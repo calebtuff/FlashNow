@@ -5,6 +5,7 @@ export const TRANSACTION_TYPE = {
   HOLD: 'hold',
   RELEASE: 'release',
   DEBIT: 'debit',
+  CREDIT: 'credit',
   REFUND: 'refund',
   WITHDRAW: 'withdraw',
 };
@@ -14,6 +15,7 @@ export const transactionTypeSchema = z.enum([
   TRANSACTION_TYPE.HOLD,
   TRANSACTION_TYPE.RELEASE,
   TRANSACTION_TYPE.DEBIT,
+  TRANSACTION_TYPE.CREDIT,
   TRANSACTION_TYPE.REFUND,
   TRANSACTION_TYPE.WITHDRAW,
 ]);

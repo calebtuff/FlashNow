@@ -5,7 +5,7 @@ import Icon from '../components/Icon.jsx';
 import CountdownStrip from '../components/CountdownStrip.jsx';
 import { api } from '../services/api.js';
 import { getCurrentUserId } from '../services/currentUser.js';
-import { bidCountOf, currentPrice, imageOf, money } from '../utils/auction.js';
+import { bidCountOf, currentPrice, auctionTimeMeta, formatAuctionDateTime, imageOf, money } from '../utils/auction.js';
 
 function Skeleton() {
   return (
@@ -65,6 +65,7 @@ function BidBox({ auction }) {
       queryClient.invalidateQueries({ queryKey: ['auction', auction.id] });
       queryClient.invalidateQueries({ queryKey: ['auctions'] });
       queryClient.invalidateQueries({ queryKey: ['wallet'] });
+      queryClient.invalidateQueries({ queryKey: ['my-bids'] });
     },
   });
 
@@ -118,6 +119,11 @@ function BidBox({ auction }) {
         </p>
       )}
       {tooLow && <p className="mt-1 text-xs font-semibold text-red-600">Bid must be at least {money(minNext)}.</p>}
+      {!ended && (
+        <p className="mt-1 text-xs text-neutral-500">
+          Bids in the final minute extend the auction by 60 seconds.
+        </p>
+      )}
       {placeBid.isError && (
         <p className="mt-1 text-xs font-semibold text-red-600">
           {placeBid.error?.message || 'Could not place bid. Try again.'}
@@ -228,10 +234,29 @@ export default function AuctionDetailPage() {
                 {auction.title}
               </h1>
 
-              <div className="mt-4 inline-flex items-center gap-2 rounded-xl bg-neutral-900 px-3 py-2">
-                <span className="text-[10px] font-semibold uppercase tracking-widest text-white/70">Ends in</span>
-                <CountdownStrip endsAt={auction.endsAt} />
-              </div>
+              {(() => {
+                const time = auctionTimeMeta(auction);
+                return (
+                  <div className="mt-4 space-y-1">
+                    <div className="inline-flex items-center gap-2 rounded-xl bg-neutral-900 px-3 py-2">
+                      <Icon name="schedule" className="text-[16px] text-white/80" />
+                      <span className="text-[10px] font-semibold uppercase tracking-widest text-white/70">
+                        {time.heading}
+                      </span>
+                      {time.kind === 'ended' ? (
+                        <span className="text-xs font-semibold text-white">Ended</span>
+                      ) : (
+                        <CountdownStrip endsAt={time.countdownIso} />
+                      )}
+                    </div>
+                    <p className="text-sm text-neutral-500">
+                      {time.kind === 'scheduled' && `Starts ${time.dateTime}`}
+                      {time.kind === 'live' && `Ends ${time.dateTime}`}
+                      {time.kind === 'ended' && `Ended ${formatAuctionDateTime(auction.endsAt)}`}
+                    </p>
+                  </div>
+                );
+              })()}
 
               <div className="mt-5">
                 <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Current bid</p>

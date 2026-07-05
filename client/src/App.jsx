@@ -4,6 +4,7 @@ import HomePage from './pages/HomePage.jsx';
 import AuctionDetailPage from './pages/AuctionDetailPage.jsx';
 import CreateAuctionPage from './pages/CreateAuctionPage.jsx';
 import MyAuctionsPage from './pages/MyAuctionsPage.jsx';
+import MyBidsPage from './pages/MyBidsPage.jsx';
 import SearchPage from './pages/SearchPage.jsx';
 import WalletPage from './pages/WalletPage.jsx';
 import ProfilePage from './pages/ProfilePage.jsx';
@@ -17,6 +18,7 @@ export default function App() {
         <Route path="auctions/:id" element={<AuctionDetailPage />} />
         <Route path="sell" element={<CreateAuctionPage />} />
         <Route path="my-auctions" element={<MyAuctionsPage />} />
+        <Route path="my-bids" element={<MyBidsPage />} />
         <Route path="search" element={<SearchPage />} />
         <Route path="wallet" element={<WalletPage />} />
         <Route path="profile/:id" element={<ProfilePage />} />

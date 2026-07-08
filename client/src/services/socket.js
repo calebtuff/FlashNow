@@ -1,4 +1,5 @@
 import { io } from 'socket.io-client';
+import { getAccessToken } from './authSession.js';
 
 let socket = null;
 
@@ -20,8 +21,10 @@ export function getSocket() {
   return socket;
 }
 
-export function connectSocket() {
+export async function connectSocket() {
   const s = getSocket();
+  const token = await getAccessToken();
+  s.auth = { token: token ?? '' };
   if (!s.connected) s.connect();
   return s;
 }

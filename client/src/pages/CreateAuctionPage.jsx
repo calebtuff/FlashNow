@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from '../components/Icon.jsx';
 import { api } from '../services/api.js';
-import { getCurrentUserId } from '../services/currentUser.js';
+import { useAuth } from '../context/AuthContext.jsx';
 
 const DURATION_OPTIONS = [5, 10, 15, 30];
 
@@ -56,7 +56,7 @@ const errorClass = 'mt-1 text-xs font-semibold text-red-600';
 export default function CreateAuctionPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const sellerId = getCurrentUserId();
+  const { isAuthenticated } = useAuth();
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [showErrors, setShowErrors] = useState(false);
@@ -107,10 +107,9 @@ export default function CreateAuctionPage() {
   function handleSubmit(e) {
     e.preventDefault();
     setShowErrors(true);
-    if (!isValid || !sellerId) return;
+    if (!isValid || !isAuthenticated) return;
 
     createAuction.mutate({
-      sellerId,
       title: form.title.trim(),
       description: form.description.trim(),
       images: form.images.filter((u) => u.trim() !== ''),
@@ -291,7 +290,7 @@ export default function CreateAuctionPage() {
           </Link>
           <button
             type="submit"
-            disabled={createAuction.isPending || !sellerId}
+            disabled={createAuction.isPending || !isAuthenticated}
             className="inline-flex items-center gap-2 rounded-xl bg-neutral-900 px-6 py-2.5 text-sm font-bold text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {createAuction.isPending ? 'Creating…' : 'Create auction'}

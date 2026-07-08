@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import Icon from '../components/Icon.jsx';
 import AuctionCard from '../components/AuctionCard.jsx';
 import { api } from '../services/api.js';
-import { getCurrentUserId } from '../services/currentUser.js';
+import { useAuth } from '../context/AuthContext.jsx';
 
 const STATUS_FILTERS = [
   { key: 'all', label: 'All', match: () => true },
@@ -36,13 +36,13 @@ function StatusChip({ status }) {
 }
 
 export default function MyAuctionsPage() {
-  const userId = getCurrentUserId();
+  const { userId, isAuthenticated } = useAuth();
   const [filter, setFilter] = useState('all');
 
   const { data, isPending, isError, error } = useQuery({
     queryKey: ['my-selling', userId],
-    queryFn: () => api.get('/auctions/my/selling', { query: { userId } }),
-    enabled: !!userId,
+    queryFn: () => api.get('/auctions/my/selling'),
+    enabled: isAuthenticated,
   });
 
   const auctions = useMemo(() => data?.auctions ?? [], [data?.auctions]);

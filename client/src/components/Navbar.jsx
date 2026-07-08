@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import Icon from './Icon.jsx';
 import CategoryBar from './CategoryBar.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
 
 function centerNavClass({ isActive }) {
   return [
@@ -10,22 +11,30 @@ function centerNavClass({ isActive }) {
   ].join(' ');
 }
 
-const ACCOUNT_LINKS = [
-  { to: '/profile/demo-user', label: 'Profile', icon: 'person' },
-  { to: '/my-auctions', label: 'My auctions', icon: 'gavel' },
-  { to: '/my-bids', label: 'My bids', icon: 'local_offer' },
-  { to: '/wallet', label: 'Wallet', icon: 'account_balance_wallet' },
-];
-
 export default function Navbar() {
   const navigate = useNavigate();
+  const { isAuthenticated, appUser, signOut, loading } = useAuth();
   const [term, setTerm] = useState('');
+
+  const profilePath = appUser?.id ? `/profile/${appUser.id}` : '/profile/me';
+
+  const accountLinks = [
+    { to: profilePath, label: 'Profile', icon: 'person' },
+    { to: '/my-auctions', label: 'My auctions', icon: 'gavel' },
+    { to: '/my-bids', label: 'My bids', icon: 'local_offer' },
+    { to: '/wallet', label: 'Wallet', icon: 'account_balance_wallet' },
+  ];
 
   function handleSearch(e) {
     e.preventDefault();
     const q = term.trim();
     if (q === '') return;
     navigate(`/search?q=${encodeURIComponent(q)}`);
+  }
+
+  async function handleSignOut() {
+    await signOut();
+    navigate('/');
   }
 
   return (
@@ -63,40 +72,71 @@ export default function Navbar() {
             </NavLink>
           </div>
 
-          <Link
-            to="/wallet"
-            className="hidden items-center gap-2 rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-sm font-semibold text-neutral-900 shadow-sm no-underline sm:inline-flex"
-          >
-            <Icon name="account_balance_wallet" className="text-[20px] text-neutral-600" />
-            $2,842
-          </Link>
-
-          <div className="group relative">
-            <button
-              type="button"
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-neutral-900 bg-neutral-100 text-neutral-600 transition-colors hover:bg-neutral-200"
-              aria-label="Account menu"
-              aria-haspopup="true"
+          {!loading && isAuthenticated && (
+            <Link
+              to="/wallet"
+              className="hidden items-center gap-2 rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-sm font-semibold text-neutral-900 shadow-sm no-underline sm:inline-flex"
             >
-              <Icon name="person" className="text-[22px]" />
-            </button>
+              <Icon name="account_balance_wallet" className="text-[20px] text-neutral-600" />
+              Wallet
+            </Link>
+          )}
 
-            <div className="invisible absolute right-0 top-full pt-2 opacity-0 transition-all duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
-              <div className="w-52 rounded-2xl border border-neutral-200 bg-white p-1.5 shadow-lg">
-                <p className="px-3 py-2 text-xs font-bold uppercase tracking-wide text-neutral-400">My account</p>
-                {ACCOUNT_LINKS.map((l) => (
-                  <Link
-                    key={l.to}
-                    to={l.to}
-                    className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-neutral-700 no-underline transition-colors hover:bg-neutral-100"
+          {!loading && !isAuthenticated && (
+            <div className="hidden items-center gap-2 sm:flex">
+              <Link
+                to="/login"
+                className="rounded-full px-4 py-2 text-sm font-semibold text-neutral-700 no-underline hover:bg-white/60"
+              >
+                Sign in
+              </Link>
+              <Link
+                to="/register"
+                className="rounded-full bg-neutral-900 px-4 py-2 text-sm font-bold text-white no-underline hover:bg-neutral-800"
+              >
+                Sign up
+              </Link>
+            </div>
+          )}
+
+          {isAuthenticated && (
+            <div className="group relative">
+              <button
+                type="button"
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-neutral-900 bg-neutral-100 text-neutral-600 transition-colors hover:bg-neutral-200"
+                aria-label="Account menu"
+                aria-haspopup="true"
+              >
+                <Icon name="person" className="text-[22px]" />
+              </button>
+
+              <div className="invisible absolute right-0 top-full pt-2 opacity-0 transition-all duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+                <div className="w-52 rounded-2xl border border-neutral-200 bg-white p-1.5 shadow-lg">
+                  <p className="px-3 py-2 text-xs font-bold uppercase tracking-wide text-neutral-400">
+                    {appUser?.displayName || (appUser?.username ? `@${appUser.username}` : 'My account')}
+                  </p>
+                  {accountLinks.map((l) => (
+                    <Link
+                      key={l.to}
+                      to={l.to}
+                      className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-neutral-700 no-underline transition-colors hover:bg-neutral-100"
+                    >
+                      <Icon name={l.icon} className="text-[20px] text-neutral-500" />
+                      {l.label}
+                    </Link>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={handleSignOut}
+                    className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-medium text-red-600 transition-colors hover:bg-red-50"
                   >
-                    <Icon name={l.icon} className="text-[20px] text-neutral-500" />
-                    {l.label}
-                  </Link>
-                ))}
+                    <Icon name="logout" className="text-[20px]" />
+                    Sign out
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       </nav>
 

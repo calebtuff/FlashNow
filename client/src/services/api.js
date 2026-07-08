@@ -1,3 +1,5 @@
+import { getAccessToken } from './authSession.js';
+
 const envBase = import.meta.env.VITE_API_BASE_URL;
 
 function getApiBase() {
@@ -44,10 +46,12 @@ async function parseResponseBody(response) {
 }
 
 async function request(method, path, { body, query, headers } = {}) {
+  const token = await getAccessToken();
   const response = await fetch(buildUrl(path, query), {
     method,
     headers: {
       ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(headers || {}),
     },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),

@@ -16,6 +16,10 @@ body {
   font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
 }
 
+.font-display {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+}
+
 .material-symbols-outlined {
   font-family: 'Material Symbols Outlined';
   font-weight: normal;

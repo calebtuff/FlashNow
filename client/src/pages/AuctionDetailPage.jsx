@@ -5,7 +5,7 @@ import Icon from '../components/Icon.jsx';
 import CountdownStrip from '../components/CountdownStrip.jsx';
 import useAuctionSocket from '../hooks/useAuctionSocket.js';
 import { api } from '../services/api.js';
-import { getCurrentUserId } from '../services/currentUser.js';
+import { useAuth } from '../context/AuthContext.jsx';
 import { bidCountOf, currentPrice, auctionTimeMeta, formatAuctionDateTime, imageOf, money } from '../utils/auction.js';
 
 const TERMINAL_STATUSES = ['ended', 'completed', 'cancelled'];
@@ -47,7 +47,7 @@ function SellerCard({ seller }) {
 
 function BidBox({ auction }) {
   const queryClient = useQueryClient();
-  const userId = getCurrentUserId();
+  const { userId, isAuthenticated } = useAuth();
   const minNext = currentPrice(auction) + 1;
   const [amount, setAmount] = useState('');
 
@@ -57,13 +57,13 @@ function BidBox({ auction }) {
 
   const walletQuery = useQuery({
     queryKey: ['wallet', userId],
-    queryFn: () => api.get('/wallet', { query: { userId } }),
-    enabled: !!userId,
+    queryFn: () => api.get('/wallet'),
+    enabled: isAuthenticated,
   });
   const available = walletQuery.data?.wallet?.availableBalance;
 
   const placeBid = useMutation({
-    mutationFn: (value) => api.post(`/auctions/${auction.id}/bids`, { amount: value, userId }),
+    mutationFn: (value) => api.post(`/auctions/${auction.id}/bids`, { amount: value }),
     onSuccess: () => {
       setAmount('');
       queryClient.invalidateQueries({ queryKey: ['auction', auction.id] });
@@ -75,7 +75,7 @@ function BidBox({ auction }) {
 
   const value = Number.parseFloat(amount);
   const tooLow = !Number.isNaN(value) && value < minNext;
-  const disabled = ended || placeBid.isPending || amount === '' || Number.isNaN(value) || tooLow;
+  const disabled = ended || !isAuthenticated || placeBid.isPending || amount === '' || Number.isNaN(value) || tooLow;
 
   return (
     <form
@@ -117,7 +117,7 @@ function BidBox({ auction }) {
       <p className="mt-2 text-xs text-neutral-500">
         {ended ? 'This auction has ended.' : `Enter ${money(minNext)} or more.`}
       </p>
-      {userId && typeof available === 'number' && (
+      {isAuthenticated && typeof available === 'number' && (
         <p className="mt-1 text-xs text-neutral-500">
           Available balance: <span className="font-semibold text-neutral-700">{money(available)}</span>
         </p>
@@ -134,6 +134,14 @@ function BidBox({ auction }) {
         </p>
       )}
       {placeBid.isSuccess && <p className="mt-1 text-xs font-semibold text-emerald-600">Bid placed!</p>}
+      {!isAuthenticated && !ended && (
+        <p className="mt-2 text-sm text-neutral-600">
+          <Link to={`/login?redirect=${encodeURIComponent(window.location.pathname)}`} className="font-semibold text-neutral-900">
+            Sign in
+          </Link>{' '}
+          to place a bid.
+        </p>
+      )}
     </form>
   );
 }
@@ -168,7 +176,7 @@ function BidHistory({ bids }) {
 export default function AuctionDetailPage() {
   const { id } = useParams();
   const [activeImage, setActiveImage] = useState(0);
-  const userId = getCurrentUserId();
+  const { userId } = useAuth();
   const { outbidMessage } = useAuctionSocket(id);
 
   const { data, isPending, isError, error } = useQuery({

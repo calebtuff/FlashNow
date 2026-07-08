@@ -3,6 +3,7 @@ import { MIN_BID_INCREMENT } from 'shared/constants';
 import prisma from '../lib/prisma.js';
 import { trySettleAuctionIfExpired } from '../services/auctionEngine.js';
 import { computeExtendedEndsAt } from '../utils/bidExtension.js';
+import { emitBidUpdate } from '../socket/emitters.js';
 
 export const getAllAuctions = async (req, res) => {
   try {
@@ -262,7 +263,35 @@ export const placeBid = async (req, res) => {
       }
 
       const bid = await tx.bid.create({ data: { auctionId, userId, amount } });
-      return { bid, currentBid: amount, endsAt: nextEndsAt, extended };
+      const bidWithUser = await tx.bid.findUnique({
+        where: { id: bid.id },
+        include: {
+          user: { select: { id: true, username: true, avatarUrl: true } },
+        },
+      });
+
+      return {
+        bid: bidWithUser,
+        currentBid: amount,
+        endsAt: nextEndsAt,
+        extended,
+        previousWinnerId: auction.currentWinnerId,
+      };
+    });
+
+    emitBidUpdate(auctionId, {
+      auctionId,
+      currentBid: result.currentBid,
+      currentWinnerId: userId,
+      previousWinnerId: result.previousWinnerId,
+      endsAt: result.endsAt.toISOString(),
+      extended: result.extended,
+      bid: {
+        id: result.bid.id,
+        amount: parseFloat(result.bid.amount),
+        placedAt: result.bid.placedAt,
+        user: result.bid.user,
+      },
     });
 
     return res.status(201).json({

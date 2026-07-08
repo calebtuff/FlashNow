@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from '../components/Icon.jsx';
 import { api } from '../services/api.js';
-import { getCurrentUserId } from '../services/currentUser.js';
+import { useAuth } from '../context/AuthContext.jsx';
 import { money } from '../utils/auction.js';
 
 const TOPUP_MIN = 5;
@@ -141,7 +141,7 @@ function FundForm({ title, hint, amount, onAmountChange, onSubmit, isPending, er
 }
 
 export default function WalletPage() {
-  const userId = getCurrentUserId();
+  const { userId, isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
 
   const [topupAmount, setTopupAmount] = useState('');
@@ -151,21 +151,21 @@ export default function WalletPage() {
 
   const walletQuery = useQuery({
     queryKey: ['wallet', userId],
-    queryFn: () => api.get('/wallet', { query: { userId } }),
-    enabled: !!userId,
+    queryFn: () => api.get('/wallet'),
+    enabled: isAuthenticated,
   });
 
   const transactionsQuery = useQuery({
     queryKey: ['wallet-transactions', userId],
-    queryFn: () => api.get('/wallet/transactions', { query: { userId } }),
-    enabled: !!userId,
+    queryFn: () => api.get('/wallet/transactions'),
+    enabled: isAuthenticated,
   });
 
   const wallet = walletQuery.data?.wallet;
   const transactions = transactionsQuery.data?.transactions ?? [];
 
   const topup = useMutation({
-    mutationFn: (amount) => api.post('/wallet/topup', { userId, amount }),
+    mutationFn: (amount) => api.post('/wallet/topup', { amount }),
     onSuccess: () => {
       setTopupAmount('');
       setTopupError('');
@@ -176,7 +176,7 @@ export default function WalletPage() {
   });
 
   const withdraw = useMutation({
-    mutationFn: (amount) => api.post('/wallet/withdraw', { userId, amount }),
+    mutationFn: (amount) => api.post('/wallet/withdraw', { amount }),
     onSuccess: () => {
       setWithdrawAmount('');
       setWithdrawError('');

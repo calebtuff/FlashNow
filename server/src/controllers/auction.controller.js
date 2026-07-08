@@ -83,7 +83,6 @@ export const getAuctionById = async (req, res) => {
 export const createAuction = async (req, res) => {
   try {
     const {
-      sellerId,
       title,
       description,
       images,
@@ -94,11 +93,16 @@ export const createAuction = async (req, res) => {
       startsAt,
     } = req.body;
 
+    const sellerId = req.user?.id;
+    if (!sellerId) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
     // Basic validation for now (you can replace this with Zod)
-    if (!sellerId || !title || !description || !Array.isArray(images) || images.length === 0) {
+    if (!title || !description || !Array.isArray(images) || images.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'sellerId, title, description, and at least one image are required',
+        message: 'title, description, and at least one image are required',
       });
     }
 
@@ -163,13 +167,13 @@ export const createAuction = async (req, res) => {
 
 export const placeBid = async (req, res) => {
   try {
-    const userId = req.user?.id || req.body?.userId;
+    const userId = req.user?.id;
     const { id: auctionId } = req.params;
 
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: 'Missing userId (temporary until auth is added).',
+        message: 'Unauthorized',
       });
     }
 
@@ -324,11 +328,11 @@ export const deleteAuction = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const requesterId = req.user?.id || req.body?.sellerId;
+    const requesterId = req.user?.id;
     if (!requesterId) {
       return res.status(401).json({
         success: false,
-        message: 'Unauthorized (missing user). Provide auth or sellerId temporarily.',
+        message: 'Unauthorized',
       });
     }
 
@@ -388,12 +392,12 @@ const formatAuctionForApi = auction => {
 
 export const getMySellingAuctions = async (req, res) => {
   try {
-    const userId = req.user?.id || req.query?.userId;
+    const userId = req.user?.id;
 
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: 'Unauthorized (missing user). Provide auth or userId temporarily.',
+        message: 'Unauthorized',
       });
     }
 
@@ -418,12 +422,12 @@ export const getMySellingAuctions = async (req, res) => {
 
 export const getMyBids = async (req, res) => {
   try {
-    const userId = req.user?.id || req.query?.userId;
+    const userId = req.user?.id;
 
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: 'Unauthorized (missing user). Provide auth or userId temporarily.',
+        message: 'Unauthorized',
       });
     }
 

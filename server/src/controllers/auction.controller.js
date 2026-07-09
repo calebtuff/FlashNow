@@ -1,4 +1,5 @@
-import { placeBidSchema } from 'shared';
+import { ZodError } from 'zod';
+import { placeBidSchema, searchAuctionsQuerySchema } from 'shared';
 import { MIN_BID_INCREMENT } from 'shared/constants';
 import prisma from '../lib/prisma.js';
 import { trySettleAuctionIfExpired } from '../services/auctionEngine.js';
@@ -530,21 +531,11 @@ export const getFeed = async (req, res) => {
 
 export const searchAuctions = async (req, res) => {
   try {
-    const q = req.query.q?.toString();
-    const categoryId = req.query.categoryId?.toString();
-    const status = req.query.status?.toString();
+    const { q, categoryId, status, minPrice, maxPrice, sortBy, page, limit } =
+      searchAuctionsQuerySchema.parse(req.query);
 
-    const minPrice = req.query.minPrice ? Number(req.query.minPrice) : undefined;
-    const maxPrice = req.query.maxPrice ? Number(req.query.maxPrice) : undefined;
-
-    const sortBy = req.query.sortBy?.toString();
-    const page = Number(req.query.page || 1);
-    const limit = Number(req.query.limit || 20);
     const skip = (page - 1) * limit;
 
-    // Basic search MVP:
-    // - q searches title/description
-    // - price filters apply to startingBid (MVP approximation)
     const where = {};
 
     if (categoryId) where.categoryId = categoryId;
@@ -562,14 +553,14 @@ export const searchAuctions = async (req, res) => {
       ];
     }
 
-    if (minPrice || maxPrice) {
+    if (minPrice !== undefined || maxPrice !== undefined) {
       where.startingBid = {
-        ...(minPrice ? { gte: minPrice } : {}),
-        ...(maxPrice ? { lte: maxPrice } : {}),
+        ...(minPrice !== undefined ? { gte: minPrice } : {}),
+        ...(maxPrice !== undefined ? { lte: maxPrice } : {}),
       };
     }
 
-    let orderBy = { createdAt: 'desc' };
+    let orderBy = { endsAt: 'asc' };
     switch (sortBy) {
       case 'ending_soon':
         orderBy = { endsAt: 'asc' };
@@ -584,7 +575,7 @@ export const searchAuctions = async (req, res) => {
         orderBy = { createdAt: 'desc' };
         break;
       default:
-        orderBy = { createdAt: 'desc' };
+        orderBy = { endsAt: 'asc' };
     }
 
     const [auctions, total] = await Promise.all([
@@ -614,6 +605,13 @@ export const searchAuctions = async (req, res) => {
       },
     });
   } catch (error) {
+    if (error instanceof ZodError) {
+      return res.status(400).json({
+        success: false,
+        message: error.errors[0]?.message || 'Invalid search parameters',
+        errors: error.errors,
+      });
+    }
     console.error('searchAuctions error:', error);
     return res.status(500).json({ success: false, message: 'Failed to search auctions' });
   }

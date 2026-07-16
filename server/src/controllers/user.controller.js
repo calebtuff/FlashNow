@@ -1,3 +1,5 @@
+import { ZodError } from 'zod';
+import { updateUserSchema } from 'shared';
 import prisma from '../lib/prisma.js';
 
 export const getUserById = async (req, res) => {
@@ -9,6 +11,7 @@ export const getUserById = async (req, res) => {
       select: {
         id: true,
         username: true,
+        displayName: true,
         avatarUrl: true,
         createdAt: true,
         _count: {
@@ -35,6 +38,7 @@ export const getUserById = async (req, res) => {
       user: {
         id: user.id,
         username: user.username,
+        displayName: user.displayName,
         avatarUrl: user.avatarUrl,
         createdAt: user.createdAt,
         stats: {
@@ -55,12 +59,12 @@ export const getUserById = async (req, res) => {
 
 export const getCurrentUser = async (req, res) => {
   try {
-    const userId = req.user?.id || req.body?.userId;
+    const userId = req.user?.id;
 
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: 'Unauthorized (missing user). Provide auth or userId temporarily.',
+        message: 'Unauthorized',
       });
     }
 
@@ -89,6 +93,7 @@ export const getCurrentUser = async (req, res) => {
         id: user.id,
         email: user.email,
         username: user.username,
+        displayName: user.displayName,
         avatarUrl: user.avatarUrl,
         phone: user.phone,
         createdAt: user.createdAt,
@@ -115,21 +120,22 @@ export const getCurrentUser = async (req, res) => {
 
 export const updateCurrentUser = async (req, res) => {
   try {
-    const userId = req.user?.id || req.body?.userId;
+    const userId = req.user?.id;
 
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: 'Unauthorized (missing user). Provide auth or userId temporarily.',
+        message: 'Unauthorized',
       });
     }
 
-    const { username, avatarUrl, phone } = req.body;
+    const { username, displayName, avatarUrl, phone } = updateUserSchema.parse(req.body);
 
     const updated = await prisma.user.update({
       where: { id: userId },
       data: {
         ...(username !== undefined && { username }),
+        ...(displayName !== undefined && { displayName }),
         ...(avatarUrl !== undefined && { avatarUrl }),
         ...(phone !== undefined && { phone }),
       },
@@ -137,6 +143,7 @@ export const updateCurrentUser = async (req, res) => {
         id: true,
         email: true,
         username: true,
+        displayName: true,
         avatarUrl: true,
         phone: true,
         createdAt: true,
@@ -148,6 +155,12 @@ export const updateCurrentUser = async (req, res) => {
       user: updated,
     });
   } catch (error) {
+    if (error instanceof ZodError) {
+      return res.status(400).json({
+        success: false,
+        message: error.errors[0]?.message || 'Invalid profile data',
+      });
+    }
     console.error('updateCurrentUser error:', error);
     return res.status(500).json({ success: false, message: 'Failed to update user' });
   }

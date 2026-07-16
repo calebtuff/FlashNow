@@ -1,9 +1,11 @@
-import { placeBidSchema } from 'shared';
-import { MIN_BID_INCREMENT } from 'shared/constants';
+import { ZodError } from 'zod';
+import { placeBidSchema, searchAuctionsQuerySchema } from 'shared';
+import { MIN_BID_INCREMENT, NOTIFICATION_TYPES } from 'shared/constants';
 import prisma from '../lib/prisma.js';
 import { trySettleAuctionIfExpired } from '../services/auctionEngine.js';
 import { computeExtendedEndsAt } from '../utils/bidExtension.js';
 import { emitBidUpdate } from '../socket/emitters.js';
+import { createNotification, notifySafely } from '../services/notificationService.js';
 
 export const getAllAuctions = async (req, res) => {
   try {
@@ -83,7 +85,6 @@ export const getAuctionById = async (req, res) => {
 export const createAuction = async (req, res) => {
   try {
     const {
-      sellerId,
       title,
       description,
       images,
@@ -94,11 +95,16 @@ export const createAuction = async (req, res) => {
       startsAt,
     } = req.body;
 
+    const sellerId = req.user?.id;
+    if (!sellerId) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
     // Basic validation for now (you can replace this with Zod)
-    if (!sellerId || !title || !description || !Array.isArray(images) || images.length === 0) {
+    if (!title || !description || !Array.isArray(images) || images.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'sellerId, title, description, and at least one image are required',
+        message: 'title, description, and at least one image are required',
       });
     }
 
@@ -163,13 +169,13 @@ export const createAuction = async (req, res) => {
 
 export const placeBid = async (req, res) => {
   try {
-    const userId = req.user?.id || req.body?.userId;
+    const userId = req.user?.id;
     const { id: auctionId } = req.params;
 
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: 'Missing userId (temporary until auth is added).',
+        message: 'Unauthorized',
       });
     }
 
@@ -276,6 +282,7 @@ export const placeBid = async (req, res) => {
         endsAt: nextEndsAt,
         extended,
         previousWinnerId: auction.currentWinnerId,
+        auctionTitle: auction.title,
       };
     });
 
@@ -293,6 +300,22 @@ export const placeBid = async (req, res) => {
         user: result.bid.user,
       },
     });
+
+    if (result.previousWinnerId && result.previousWinnerId !== userId) {
+      notifySafely(
+        createNotification({
+          userId: result.previousWinnerId,
+          type: NOTIFICATION_TYPES.OUTBID,
+          title: "You've been outbid",
+          body: `New bid of $${result.currentBid} on "${result.auctionTitle}"`,
+          data: {
+            auctionId,
+            bidAmount: result.currentBid,
+            auctionTitle: result.auctionTitle,
+          },
+        })
+      );
+    }
 
     return res.status(201).json({
       success: true,
@@ -324,11 +347,11 @@ export const deleteAuction = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const requesterId = req.user?.id || req.body?.sellerId;
+    const requesterId = req.user?.id;
     if (!requesterId) {
       return res.status(401).json({
         success: false,
-        message: 'Unauthorized (missing user). Provide auth or sellerId temporarily.',
+        message: 'Unauthorized',
       });
     }
 
@@ -388,12 +411,12 @@ const formatAuctionForApi = auction => {
 
 export const getMySellingAuctions = async (req, res) => {
   try {
-    const userId = req.user?.id || req.query?.userId;
+    const userId = req.user?.id;
 
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: 'Unauthorized (missing user). Provide auth or userId temporarily.',
+        message: 'Unauthorized',
       });
     }
 
@@ -418,12 +441,12 @@ export const getMySellingAuctions = async (req, res) => {
 
 export const getMyBids = async (req, res) => {
   try {
-    const userId = req.user?.id || req.query?.userId;
+    const userId = req.user?.id;
 
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: 'Unauthorized (missing user). Provide auth or userId temporarily.',
+        message: 'Unauthorized',
       });
     }
 
@@ -526,21 +549,11 @@ export const getFeed = async (req, res) => {
 
 export const searchAuctions = async (req, res) => {
   try {
-    const q = req.query.q?.toString();
-    const categoryId = req.query.categoryId?.toString();
-    const status = req.query.status?.toString();
+    const { q, categoryId, status, minPrice, maxPrice, sortBy, page, limit } =
+      searchAuctionsQuerySchema.parse(req.query);
 
-    const minPrice = req.query.minPrice ? Number(req.query.minPrice) : undefined;
-    const maxPrice = req.query.maxPrice ? Number(req.query.maxPrice) : undefined;
-
-    const sortBy = req.query.sortBy?.toString();
-    const page = Number(req.query.page || 1);
-    const limit = Number(req.query.limit || 20);
     const skip = (page - 1) * limit;
 
-    // Basic search MVP:
-    // - q searches title/description
-    // - price filters apply to startingBid (MVP approximation)
     const where = {};
 
     if (categoryId) where.categoryId = categoryId;
@@ -558,14 +571,14 @@ export const searchAuctions = async (req, res) => {
       ];
     }
 
-    if (minPrice || maxPrice) {
+    if (minPrice !== undefined || maxPrice !== undefined) {
       where.startingBid = {
-        ...(minPrice ? { gte: minPrice } : {}),
-        ...(maxPrice ? { lte: maxPrice } : {}),
+        ...(minPrice !== undefined ? { gte: minPrice } : {}),
+        ...(maxPrice !== undefined ? { lte: maxPrice } : {}),
       };
     }
 
-    let orderBy = { createdAt: 'desc' };
+    let orderBy = { endsAt: 'asc' };
     switch (sortBy) {
       case 'ending_soon':
         orderBy = { endsAt: 'asc' };
@@ -580,7 +593,7 @@ export const searchAuctions = async (req, res) => {
         orderBy = { createdAt: 'desc' };
         break;
       default:
-        orderBy = { createdAt: 'desc' };
+        orderBy = { endsAt: 'asc' };
     }
 
     const [auctions, total] = await Promise.all([
@@ -610,6 +623,13 @@ export const searchAuctions = async (req, res) => {
       },
     });
   } catch (error) {
+    if (error instanceof ZodError) {
+      return res.status(400).json({
+        success: false,
+        message: error.errors[0]?.message || 'Invalid search parameters',
+        errors: error.errors,
+      });
+    }
     console.error('searchAuctions error:', error);
     return res.status(500).json({ success: false, message: 'Failed to search auctions' });
   }

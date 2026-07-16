@@ -58,15 +58,29 @@ export const updateAuctionSchema = z.object({
   startsAt: z.coerce.date().optional(),
 });
 
-export const auctionFiltersSchema = z.object({
-  categoryId: z.string().uuid().optional(),
-  status: auctionStatusSchema.optional(),
-  minPrice: z.coerce.number().positive().optional(),
-  maxPrice: z.coerce.number().positive().optional(),
-  sellerId: z.string().uuid().optional(),
-  search: z.string().optional(),
-  sortBy: z.enum(['createdAt', 'startsAt', 'endsAt', 'currentBid']).optional(),
-  sortOrder: z.enum(['asc', 'desc']).optional(),
-  page: z.coerce.number().int().positive().optional(),
-  limit: z.coerce.number().int().min(1).max(50).optional(),
-});
+export const searchSortSchema = z.enum(['ending_soon', 'newest', 'price_low', 'price_high']);
+
+function emptyToUndefined(value) {
+  if (value === undefined || value === null || value === '') return undefined;
+  return value;
+}
+
+/** Query params for GET /api/auctions/search (aligned with client searchParams.js) */
+export const searchAuctionsQuerySchema = z
+  .object({
+    q: z.preprocess(emptyToUndefined, z.string().trim().min(1).max(200).optional()),
+    categoryId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
+    status: z.preprocess(emptyToUndefined, auctionStatusSchema.optional()),
+    minPrice: z.preprocess(emptyToUndefined, z.coerce.number().min(0).optional()),
+    maxPrice: z.preprocess(emptyToUndefined, z.coerce.number().min(0).optional()),
+    sortBy: z.preprocess(emptyToUndefined, searchSortSchema.default('ending_soon')),
+    page: z.coerce.number().int().positive().default(1),
+    limit: z.coerce.number().int().min(1).max(50).default(20),
+  })
+  .refine(
+    (data) => data.minPrice === undefined || data.maxPrice === undefined || data.minPrice <= data.maxPrice,
+    { message: 'minPrice cannot be greater than maxPrice', path: ['minPrice'] }
+  );
+
+/** @deprecated Use searchAuctionsQuerySchema — kept for older references */
+export const auctionFiltersSchema = searchAuctionsQuerySchema;

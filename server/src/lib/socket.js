@@ -11,3 +11,7 @@ export function getIo() {
 export function auctionRoomId(auctionId) {
   return `auction:${auctionId}`;
 }
+
+export function userRoomId(userId) {
+  return `user:${userId}`;
+}

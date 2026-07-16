@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import Icon from './Icon.jsx';
 import CategoryBar from './CategoryBar.jsx';
+import NotificationBell from './NotificationBell.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 
 function centerNavClass({ isActive }) {
@@ -100,7 +101,9 @@ export default function Navbar() {
           )}
 
           {isAuthenticated && (
-            <div className="group relative">
+            <>
+              <NotificationBell />
+              <div className="group relative">
               <button
                 type="button"
                 className="flex h-9 w-9 items-center justify-center rounded-full border border-neutral-900 bg-neutral-100 text-neutral-600 transition-colors hover:bg-neutral-200"
@@ -136,6 +139,7 @@ export default function Navbar() {
                 </div>
               </div>
             </div>
+            </>
           )}
         </div>
       </nav>

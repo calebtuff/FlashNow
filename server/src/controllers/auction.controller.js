@@ -1,10 +1,11 @@
 import { ZodError } from 'zod';
 import { placeBidSchema, searchAuctionsQuerySchema } from 'shared';
-import { MIN_BID_INCREMENT } from 'shared/constants';
+import { MIN_BID_INCREMENT, NOTIFICATION_TYPES } from 'shared/constants';
 import prisma from '../lib/prisma.js';
 import { trySettleAuctionIfExpired } from '../services/auctionEngine.js';
 import { computeExtendedEndsAt } from '../utils/bidExtension.js';
 import { emitBidUpdate } from '../socket/emitters.js';
+import { createNotification, notifySafely } from '../services/notificationService.js';
 
 export const getAllAuctions = async (req, res) => {
   try {
@@ -281,6 +282,7 @@ export const placeBid = async (req, res) => {
         endsAt: nextEndsAt,
         extended,
         previousWinnerId: auction.currentWinnerId,
+        auctionTitle: auction.title,
       };
     });
 
@@ -298,6 +300,22 @@ export const placeBid = async (req, res) => {
         user: result.bid.user,
       },
     });
+
+    if (result.previousWinnerId && result.previousWinnerId !== userId) {
+      notifySafely(
+        createNotification({
+          userId: result.previousWinnerId,
+          type: NOTIFICATION_TYPES.OUTBID,
+          title: "You've been outbid",
+          body: `New bid of $${result.currentBid} on "${result.auctionTitle}"`,
+          data: {
+            auctionId,
+            bidAmount: result.currentBid,
+            auctionTitle: result.auctionTitle,
+          },
+        })
+      );
+    }
 
     return res.status(201).json({
       success: true,

@@ -1,5 +1,11 @@
 import prisma from '../lib/prisma.js';
+import { ENDING_SOON_WINDOW_MS, NOTIFICATION_TYPES } from 'shared/constants';
 import { emitAuctionEnd } from '../socket/emitters.js';
+import {
+  createNotification,
+  hasNotificationForAuction,
+  notifySafely,
+} from './notificationService.js';
 
 const TERMINAL_STATUSES = ['ended', 'completed', 'cancelled'];
 
@@ -48,6 +54,7 @@ export async function settleAuction(auctionId, now = new Date()) {
     const winAmount = Number(auction.currentBid);
     const winnerId = auction.currentWinnerId;
     const sellerId = auction.sellerId;
+    const auctionTitle = auction.title;
 
     const winnerWallet = await tx.wallet.findUnique({ where: { userId: winnerId } });
     if (!winnerWallet) {
@@ -124,6 +131,9 @@ export async function settleAuction(auctionId, now = new Date()) {
       amount: winAmount,
       currentBid: winAmount,
       currentWinnerId: winnerId,
+      winnerId,
+      sellerId,
+      auctionTitle,
     };
   });
 
@@ -136,7 +146,80 @@ export async function settleAuction(auctionId, now = new Date()) {
     });
   }
 
+  if (result.ok && result.reason === 'completed') {
+    const { winnerId, sellerId, auctionTitle, amount } = result;
+    notifySafely(
+      createNotification({
+        userId: winnerId,
+        type: NOTIFICATION_TYPES.AUCTION_WON,
+        title: 'You won the auction!',
+        body: `You won "${auctionTitle}" for $${amount}`,
+        data: { auctionId, auctionTitle, bidAmount: amount },
+      })
+    );
+    notifySafely(
+      createNotification({
+        userId: sellerId,
+        type: NOTIFICATION_TYPES.AUCTION_SOLD,
+        title: 'Your item sold!',
+        body: `"${auctionTitle}" sold for $${amount}`,
+        data: { auctionId, auctionTitle, bidAmount: amount },
+      })
+    );
+  }
+
   return result;
+}
+
+/**
+ * Notify high bidders on live auctions ending within ENDING_SOON_WINDOW_MS.
+ */
+export async function notifyEndingSoonAuctions(now = new Date()) {
+  const windowEnd = new Date(now.getTime() + ENDING_SOON_WINDOW_MS);
+
+  const auctions = await prisma.auction.findMany({
+    where: {
+      status: 'live',
+      endsAt: { gt: now, lte: windowEnd },
+      currentWinnerId: { not: null },
+    },
+    select: {
+      id: true,
+      title: true,
+      endsAt: true,
+      currentWinnerId: true,
+      currentBid: true,
+    },
+  });
+
+  let sent = 0;
+  for (const auction of auctions) {
+    const userId = auction.currentWinnerId;
+    const already = await hasNotificationForAuction({
+      userId,
+      type: NOTIFICATION_TYPES.ENDING_SOON,
+      auctionId: auction.id,
+    });
+    if (already) continue;
+
+    notifySafely(
+      createNotification({
+        userId,
+        type: NOTIFICATION_TYPES.ENDING_SOON,
+        title: 'Auction ending soon',
+        body: `"${auction.title}" ends in less than 15 minutes. You're the high bidder.`,
+        data: {
+          auctionId: auction.id,
+          auctionTitle: auction.title,
+          endsAt: auction.endsAt.toISOString(),
+          bidAmount: Number(auction.currentBid),
+        },
+      })
+    );
+    sent += 1;
+  }
+
+  return sent;
 }
 
 /**
@@ -178,16 +261,17 @@ export async function endExpiredAuctions(now = new Date()) {
  */
 export async function runAuctionLifecycleTick(now = new Date()) {
   const promoted = await promoteScheduledAuctions(now);
+  const endingSoon = await notifyEndingSoonAuctions(now);
   const settlements = await endExpiredAuctions(now);
 
   const settled = settlements.filter((r) => r.ok && r.reason === 'completed').length;
   const endedNoBids = settlements.filter((r) => r.reason === 'ended_no_bids').length;
 
-  if (promoted > 0 || settlements.length > 0) {
+  if (promoted > 0 || endingSoon > 0 || settlements.length > 0) {
     console.log(
-      `[auction-engine] promoted=${promoted} settled=${settled} ended_no_bids=${endedNoBids} processed=${settlements.length}`
+      `[auction-engine] promoted=${promoted} ending_soon=${endingSoon} settled=${settled} ended_no_bids=${endedNoBids} processed=${settlements.length}`
     );
   }
 
-  return { promoted, settlements };
+  return { promoted, endingSoon, settlements };
 }

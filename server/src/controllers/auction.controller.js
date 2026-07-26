@@ -64,15 +64,58 @@ export const getAuctionById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Auction not found' });
     }
 
+    const viewerId = req.user?.id ?? null;
+    const [sellerRatingAgg, viewerExistingRating] = await Promise.all([
+      prisma.rating.aggregate({
+        where: { toUserId: auction.sellerId },
+        _avg: { score: true },
+        _count: { score: true },
+      }),
+      viewerId
+        ? prisma.rating.findUnique({
+            where: {
+              fromUserId_auctionId: { fromUserId: viewerId, auctionId: id },
+            },
+            select: { score: true, comment: true, createdAt: true },
+          })
+        : Promise.resolve(null),
+    ]);
+
+    let viewerRating = null;
+    if (
+      viewerId &&
+      auction.status === 'completed' &&
+      auction.currentWinnerId === viewerId &&
+      auction.sellerId !== viewerId
+    ) {
+      viewerRating = {
+        canRate: !viewerExistingRating,
+        existing: viewerExistingRating,
+      };
+    } else if (viewerExistingRating) {
+      viewerRating = {
+        canRate: false,
+        existing: viewerExistingRating,
+      };
+    }
+
     const formatted = {
       ...auction,
       startingBid: parseFloat(auction.startingBid),
       buyNowPrice: auction.buyNowPrice ? parseFloat(auction.buyNowPrice) : null,
       currentBid: auction.currentBid ? parseFloat(auction.currentBid) : null,
+      seller: {
+        ...auction.seller,
+        rating: {
+          average: sellerRatingAgg._avg.score || 0,
+          count: sellerRatingAgg._count.score,
+        },
+      },
       bids: auction.bids.map(b => ({
         ...b,
         amount: parseFloat(b.amount),
       })),
+      viewerRating,
     };
 
     res.json({ success: true, auction: formatted });

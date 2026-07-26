@@ -187,6 +187,15 @@ export default function MyBidsPage() {
                 {' · '}
                 Current: <span className="font-semibold text-neutral-900">{money(currentPrice(auction))}</span>
               </p>
+              {status === 'won' && auction.status === 'completed' && (
+                <Link
+                  to={`/auctions/${auction.id}`}
+                  className="mx-1 inline-flex items-center gap-1.5 text-xs font-bold text-violet-800 no-underline hover:underline"
+                >
+                  <Icon name="star" className="text-[16px]" />
+                  Rate seller
+                </Link>
+              )}
             </div>
           ))}
         </div>

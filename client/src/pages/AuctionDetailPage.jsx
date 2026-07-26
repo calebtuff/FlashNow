@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from '../components/Icon.jsx';
 import CountdownStrip from '../components/CountdownStrip.jsx';
+import RateSellerForm from '../components/RateSellerForm.jsx';
+import Stars from '../components/Stars.jsx';
 import useAuctionSocket from '../hooks/useAuctionSocket.js';
 import { api } from '../services/api.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -26,6 +28,7 @@ function Skeleton() {
 
 function SellerCard({ seller }) {
   if (!seller) return null;
+  const rating = seller.rating ?? { average: 0, count: 0 };
   return (
     <Link
       to={`/profile/${seller.id}`}
@@ -36,11 +39,19 @@ function SellerCard({ seller }) {
         alt=""
         className="h-10 w-10 rounded-full object-cover"
       />
-      <div>
+      <div className="min-w-0 flex-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Seller</p>
         <p className="font-bold text-neutral-900">{seller.username || 'Unknown seller'}</p>
+        {rating.count > 0 && (
+          <div className="mt-1 flex items-center gap-1.5">
+            <Stars score={rating.average} size="sm" />
+            <span className="text-xs font-medium text-neutral-500">
+              {rating.average.toFixed(1)} ({rating.count})
+            </span>
+          </div>
+        )}
       </div>
-      <Icon name="chevron_right" className="ml-auto text-[22px] text-neutral-400" />
+      <Icon name="chevron_right" className="shrink-0 text-[22px] text-neutral-400" />
     </Link>
   );
 }
@@ -289,8 +300,23 @@ export default function AuctionDetailPage() {
               )}
 
               {isCompleted && isWinner && (
-                <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-900">
-                  You won this auction!
+                <div className="mt-4 space-y-4">
+                  <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-900">
+                    You won this auction!
+                  </div>
+                  <RateSellerForm
+                    auctionId={auction.id}
+                    sellerId={auction.seller?.id}
+                    sellerName={auction.seller?.username}
+                    canRate={auction.viewerRating?.canRate}
+                    existingRating={auction.viewerRating?.existing}
+                  />
+                </div>
+              )}
+
+              {!isCompleted && isWinner && auction.status !== 'cancelled' && (
+                <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">
+                  You are the highest bidder!
                 </div>
               )}
 

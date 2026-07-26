@@ -11,39 +11,19 @@ import {
   searchAuctions,
   placeBid,
 } from '../controllers/auction.controller.js';
+import { requireAuth, optionalAuth } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Route to get all auctions
-
-//get all auctions
-router.get("/", getAllAuctions);
-
-// Get auctions for the current seller
-router.get("/my/selling", getMySellingAuctions);
-
-// Get bids for the current buyer
-router.get("/my/bids", getMyBids);
-
-// For You feed (basic MVP)
-router.get("/feed", getFeed);
-
-// Search auctions (basic MVP)
-router.get("/search", searchAuctions);
-
-//get auction by id
-router.get("/:id", getAuctionById);
-
-//place a bid on an auction
-router.post("/:id/bids", placeBid);
-
-//create auction
-router.post("/", createAuction);
-
-//update auction
-router.put("/:id", updateAuction);
-
-//delete auction
-router.delete("/:id", deleteAuction);
+router.get('/', getAllAuctions);
+router.get('/my/selling', requireAuth, getMySellingAuctions);
+router.get('/my/bids', requireAuth, getMyBids);
+router.get('/feed', getFeed);
+router.get('/search', searchAuctions);
+router.get('/:id', optionalAuth, getAuctionById);
+router.post('/:id/bids', requireAuth, placeBid);
+router.post('/', requireAuth, createAuction);
+router.put('/:id', updateAuction);
+router.delete('/:id', requireAuth, deleteAuction);
 
 export default router;

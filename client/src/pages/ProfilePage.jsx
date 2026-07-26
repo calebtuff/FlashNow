@@ -1,12 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
+import AuctionCard from '../components/AuctionCard.jsx';
 import Icon from '../components/Icon.jsx';
+import ReviewCard from '../components/ReviewCard.jsx';
+import Stars from '../components/Stars.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { api } from '../services/api.js';
 
 const inputClass =
   'mt-1.5 w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm font-medium text-neutral-900 outline-none transition-colors focus:border-neutral-900';
+
+const LISTING_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'active', label: 'Active', statuses: ['live', 'scheduled'] },
+  { key: 'sold', label: 'Sold', statuses: ['completed', 'ended'] },
+];
 
 function formatDate(iso) {
   if (!iso) return '—';
@@ -14,27 +23,6 @@ function formatDate(iso) {
     month: 'long',
     year: 'numeric',
   });
-}
-
-function formatReviewDate(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
-
-function Stars({ score, size = 'md' }) {
-  const rounded = Math.max(0, Math.min(5, Math.round(score)));
-  const iconClass = size === 'lg' ? 'text-[22px]' : 'text-[18px]';
-  return (
-    <div className="flex items-center gap-0.5 text-amber-400" aria-label={`${score.toFixed(1)} out of 5 stars`}>
-      {Array.from({ length: 5 }, (_, i) => (
-        <Icon key={i} name={i < rounded ? 'star' : 'star_border'} className={iconClass} />
-      ))}
-    </div>
-  );
 }
 
 function StatCard({ label, value, hint }) {
@@ -57,34 +45,6 @@ function ProfileSkeleton() {
         ))}
       </div>
     </div>
-  );
-}
-
-function ReviewCard({ review }) {
-  return (
-    <article className="rounded-2xl border border-neutral-200 bg-white p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Link
-            to={`/profile/${review.fromUser?.id}`}
-            className="font-semibold text-neutral-900 no-underline hover:underline"
-          >
-            @{review.fromUser?.username || 'user'}
-          </Link>
-          <p className="mt-1 text-xs text-neutral-500">{formatReviewDate(review.createdAt)}</p>
-        </div>
-        <Stars score={review.score} />
-      </div>
-      {review.auction?.title && (
-        <p className="mt-3 text-sm text-neutral-600">
-          For{' '}
-          <Link to={`/auctions/${review.auction.id}`} className="font-semibold text-neutral-900 no-underline hover:underline">
-            {review.auction.title}
-          </Link>
-        </p>
-      )}
-      {review.comment && <p className="mt-3 text-sm leading-relaxed text-neutral-700">{review.comment}</p>}
-    </article>
   );
 }
 
@@ -220,6 +180,7 @@ export default function ProfilePage() {
   const { id: routeId } = useParams();
   const { userId, isAuthenticated, loading: authLoading } = useAuth();
   const [editing, setEditing] = useState(false);
+  const [listingFilter, setListingFilter] = useState('all');
 
   const profileId = routeId === 'me' ? userId : routeId;
   const isOwnProfile = Boolean(userId && profileId === userId);
@@ -236,6 +197,12 @@ export default function ProfilePage() {
     enabled: isOwnProfile,
   });
 
+  const listingsQuery = useQuery({
+    queryKey: ['profile-listings', profileId],
+    queryFn: () => api.get(`/users/${profileId}/auctions`),
+    enabled: Boolean(profileId),
+  });
+
   const ratingsQuery = useQuery({
     queryKey: ['profile-ratings', profileId],
     queryFn: () => api.get(`/ratings/user/${profileId}`),
@@ -244,8 +211,15 @@ export default function ProfilePage() {
 
   const profile = profileQuery.data?.user;
   const me = meQuery.data?.user;
+  const listings = listingsQuery.data?.auctions ?? [];
   const reviews = ratingsQuery.data?.ratings ?? [];
   const ratingSummary = profile?.stats?.rating ?? ratingsQuery.data?.summary ?? { average: 0, count: 0 };
+
+  const filteredListings = useMemo(() => {
+    const filter = LISTING_FILTERS.find((f) => f.key === listingFilter);
+    if (!filter?.statuses) return listings;
+    return listings.filter((a) => filter.statuses.includes(a.status));
+  }, [listings, listingFilter]);
 
   const headline = useMemo(() => {
     if (!profile) return '';
@@ -327,6 +301,79 @@ export default function ProfilePage() {
       {isOwnProfile && editing && me && (
         <EditProfileForm me={me} onSaved={() => setEditing(false)} />
       )}
+
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-headline text-2xl font-extrabold text-neutral-900">Listings</h2>
+          {listings.length > 0 && (
+            <div className="flex gap-2">
+              {LISTING_FILTERS.map((f) => (
+                <button
+                  key={f.key}
+                  type="button"
+                  onClick={() => setListingFilter(f.key)}
+                  className={[
+                    'rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
+                    listingFilter === f.key
+                      ? 'border-neutral-900 bg-neutral-900 text-white'
+                      : 'border-neutral-300 bg-white text-neutral-800 hover:bg-neutral-50',
+                  ].join(' ')}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {listingsQuery.isPending && (
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {[1, 2, 3].map((k) => (
+              <div key={k} className="aspect-[3/4] animate-pulse rounded-2xl bg-neutral-200/80" />
+            ))}
+          </div>
+        )}
+
+        {!listingsQuery.isPending && listings.length === 0 && (
+          <div className="rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center">
+            <Icon name="inventory_2" className="mx-auto text-[32px] text-neutral-400" />
+            <p className="mt-3 font-semibold text-neutral-700">No public listings</p>
+            <p className="mt-1 text-sm text-neutral-500">
+              {isOwnProfile ? 'Create an auction to start selling.' : 'This seller has no active listings.'}
+            </p>
+            {isOwnProfile && (
+              <Link
+                to="/sell"
+                className="mt-4 inline-flex items-center gap-2 rounded-xl bg-neutral-900 px-5 py-2.5 text-sm font-bold text-white no-underline"
+              >
+                <Icon name="add" className="text-[18px]" />
+                Create auction
+              </Link>
+            )}
+          </div>
+        )}
+
+        {!listingsQuery.isPending && listings.length > 0 && filteredListings.length === 0 && (
+          <div className="rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center">
+            <p className="font-semibold text-neutral-700">No listings in this filter</p>
+            <button
+              type="button"
+              onClick={() => setListingFilter('all')}
+              className="mt-4 rounded-xl bg-neutral-900 px-5 py-2.5 text-sm font-bold text-white"
+            >
+              Show all
+            </button>
+          </div>
+        )}
+
+        {!listingsQuery.isPending && filteredListings.length > 0 && (
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredListings.map((auction) => (
+              <AuctionCard key={auction.id} a={auction} />
+            ))}
+          </div>
+        )}
+      </section>
 
       <section className="space-y-4">
         <div className="flex items-center justify-between gap-3">

@@ -50,6 +50,31 @@ export function filtersToURLSearchParams(filters) {
   return next;
 }
 
+/** Build a /search path from partial filter fields */
+export function buildSearchPath(filters = {}) {
+  const params = filtersToURLSearchParams({
+    q: filters.q || '',
+    categoryId: filters.categoryId || '',
+    status: filters.status || '',
+    minPrice: filters.minPrice || '',
+    maxPrice: filters.maxPrice || '',
+    sortBy: filters.sortBy || DEFAULT_SORT,
+  });
+  const qs = params.toString();
+  return qs ? `/search?${qs}` : '/search';
+}
+
+export function categorySearchPath(categoryId) {
+  if (!categoryId) return '/search';
+  return buildSearchPath({ categoryId });
+}
+
+export function keywordSearchPath(q) {
+  const trimmed = q?.trim();
+  if (!trimmed) return '/search';
+  return buildSearchPath({ q: trimmed });
+}
+
 export function countActiveFilters(filters) {
   let n = 0;
   if (filters.categoryId) n += 1;

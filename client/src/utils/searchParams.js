@@ -13,6 +13,12 @@ export const STATUS_OPTIONS = [
 ];
 
 const DEFAULT_SORT = 'ending_soon';
+const DEFAULT_PAGE = 1;
+
+function parsePage(raw) {
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : DEFAULT_PAGE;
+}
 
 export function parseSearchFilters(params) {
   return {
@@ -22,7 +28,12 @@ export function parseSearchFilters(params) {
     minPrice: params.get('minPrice') || '',
     maxPrice: params.get('maxPrice') || '',
     sortBy: params.get('sortBy') || DEFAULT_SORT,
+    page: parsePage(params.get('page')),
   };
+}
+
+export function applyFiltersResetPage(filters) {
+  return { ...filters, page: DEFAULT_PAGE };
 }
 
 export function hasSearchCriteria(filters) {
@@ -30,7 +41,10 @@ export function hasSearchCriteria(filters) {
 }
 
 export function filtersToApiQuery(filters) {
-  const query = { sortBy: filters.sortBy || DEFAULT_SORT };
+  const query = {
+    sortBy: filters.sortBy || DEFAULT_SORT,
+    page: filters.page || DEFAULT_PAGE,
+  };
   if (filters.q) query.q = filters.q;
   if (filters.categoryId) query.categoryId = filters.categoryId;
   if (filters.status) query.status = filters.status;
@@ -47,6 +61,7 @@ export function filtersToURLSearchParams(filters) {
   if (filters.minPrice) next.set('minPrice', filters.minPrice);
   if (filters.maxPrice) next.set('maxPrice', filters.maxPrice);
   if (filters.sortBy && filters.sortBy !== DEFAULT_SORT) next.set('sortBy', filters.sortBy);
+  if (filters.page > DEFAULT_PAGE) next.set('page', String(filters.page));
   return next;
 }
 
@@ -59,6 +74,7 @@ export function buildSearchPath(filters = {}) {
     minPrice: filters.minPrice || '',
     maxPrice: filters.maxPrice || '',
     sortBy: filters.sortBy || DEFAULT_SORT,
+    page: filters.page || DEFAULT_PAGE,
   });
   const qs = params.toString();
   return qs ? `/search?${qs}` : '/search';

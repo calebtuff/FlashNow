@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import Icon from '../components/Icon.jsx';
@@ -8,6 +8,7 @@ import { api } from '../services/api.js';
 import {
   SORT_OPTIONS,
   STATUS_OPTIONS,
+  applyFiltersResetPage,
   filtersToApiQuery,
   filtersToURLSearchParams,
   hasSearchCriteria,
@@ -69,10 +70,31 @@ export default function SearchPage() {
   });
 
   const results = data?.results ?? [];
-  const total = data?.pagination?.total ?? results.length;
+  const pagination = data?.pagination;
+  const total = pagination?.total ?? results.length;
+  const totalPages = pagination?.totalPages ?? 1;
+  const page = filters.page;
+
+  useEffect(() => {
+    if (isPending || !pagination) return;
+
+    if (pagination.totalPages === 0 && page > 1) {
+      setSearchParams(filtersToURLSearchParams({ ...filters, page: 1 }));
+      return;
+    }
+
+    if (pagination.totalPages > 0 && page > pagination.totalPages) {
+      setSearchParams(filtersToURLSearchParams({ ...filters, page: pagination.totalPages }));
+    }
+  }, [filters, isPending, page, pagination, setSearchParams]);
 
   function applyFilters(next) {
-    setSearchParams(filtersToURLSearchParams(next));
+    setSearchParams(filtersToURLSearchParams(applyFiltersResetPage(next)));
+  }
+
+  function goToPage(nextPage) {
+    setSearchParams(filtersToURLSearchParams({ ...filters, page: nextPage }));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function updateSort(sortBy) {
@@ -194,11 +216,37 @@ export default function SearchPage() {
               </button>
             </div>
           ) : (
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {results.map((a) => (
-                <AuctionCard key={a.id} a={a} />
-              ))}
-            </div>
+            <>
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {results.map((a) => (
+                  <AuctionCard key={a.id} a={a} />
+                ))}
+              </div>
+
+              {pagination && totalPages > 1 && (
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    disabled={page <= 1}
+                    onClick={() => goToPage(page - 1)}
+                    className="rounded-xl border border-neutral-300 px-4 py-2 text-sm font-semibold disabled:opacity-40"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-sm text-neutral-600">
+                    Page {page} of {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={page >= totalPages}
+                    onClick={() => goToPage(page + 1)}
+                    className="rounded-xl border border-neutral-300 px-4 py-2 text-sm font-semibold disabled:opacity-40"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </>
       )}

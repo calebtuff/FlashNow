@@ -4,6 +4,7 @@ import ProtectedRoute from './components/ProtectedRoute.jsx';
 import HomePage from './pages/HomePage.jsx';
 import AuctionDetailPage from './pages/AuctionDetailPage.jsx';
 import CreateAuctionPage from './pages/CreateAuctionPage.jsx';
+import EditAuctionPage from './pages/EditAuctionPage.jsx';
 import MyAuctionsPage from './pages/MyAuctionsPage.jsx';
 import MyBidsPage from './pages/MyBidsPage.jsx';
 import SearchPage from './pages/SearchPage.jsx';
@@ -24,6 +25,14 @@ export default function App() {
         <Route path="profile/:id" element={<ProfilePage />} />
         <Route path="login" element={<LoginPage />} />
         <Route path="register" element={<RegisterPage />} />
+        <Route
+          path="sell/:id/edit"
+          element={
+            <ProtectedRoute>
+              <EditAuctionPage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="sell"
           element={

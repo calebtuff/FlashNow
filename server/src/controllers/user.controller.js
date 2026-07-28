@@ -1,6 +1,63 @@
-import { ZodError } from 'zod';
+import { ZodError, z } from 'zod';
 import { updateUserSchema } from 'shared';
 import prisma from '../lib/prisma.js';
+
+const PUBLIC_LISTING_STATUSES = ['live', 'scheduled', 'completed', 'ended'];
+
+function formatAuctionForApi(auction) {
+  if (!auction) return auction;
+  return {
+    ...auction,
+    startingBid: parseFloat(auction.startingBid),
+    buyNowPrice: auction.buyNowPrice ? parseFloat(auction.buyNowPrice) : null,
+    currentBid: auction.currentBid ? parseFloat(auction.currentBid) : null,
+  };
+}
+
+export const getUserAuctions = async (req, res) => {
+  try {
+    const userId = z.string().uuid().parse(req.params.id);
+    const statusParam = req.query.status?.toString();
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const statusFilter =
+      statusParam && PUBLIC_LISTING_STATUSES.includes(statusParam)
+        ? { status: statusParam }
+        : { status: { in: PUBLIC_LISTING_STATUSES } };
+
+    const auctions = await prisma.auction.findMany({
+      where: { sellerId: userId, ...statusFilter },
+      include: {
+        category: true,
+        _count: { select: { bids: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return res.json({
+      success: true,
+      auctions: auctions.map(formatAuctionForApi),
+    });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user id',
+        errors: error.errors,
+      });
+    }
+    console.error('getUserAuctions error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch user auctions' });
+  }
+};
 
 export const getUserById = async (req, res) => {
   try {

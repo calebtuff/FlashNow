@@ -1,10 +1,10 @@
 import { ZodError } from 'zod';
-import { placeBidSchema, searchAuctionsQuerySchema } from 'shared';
+import { placeBidSchema, searchAuctionsQuerySchema, updateAuctionSchema } from 'shared';
 import { MIN_BID_INCREMENT, NOTIFICATION_TYPES } from 'shared/constants';
 import prisma from '../lib/prisma.js';
 import { trySettleAuctionIfExpired } from '../services/auctionEngine.js';
 import { computeExtendedEndsAt } from '../utils/bidExtension.js';
-import { emitBidUpdate } from '../socket/emitters.js';
+import { emitBidUpdate, emitAuctionEnd } from '../socket/emitters.js';
 import { createNotification, notifySafely } from '../services/notificationService.js';
 
 export const getAllAuctions = async (req, res) => {
@@ -380,10 +380,134 @@ export const placeBid = async (req, res) => {
   }
 };
 
+const EDITABLE_AUCTION_STATUSES = ['draft', 'scheduled'];
+const BID_LOCKED_UPDATE_FIELDS = new Set(['startingBid', 'buyNowPrice', 'durationMinutes', 'startsAt']);
+
+const formatAuctionForApi = auction => {
+  if (!auction) return auction;
+  return {
+    ...auction,
+    startingBid: parseFloat(auction.startingBid),
+    buyNowPrice: auction.buyNowPrice ? parseFloat(auction.buyNowPrice) : null,
+    currentBid: auction.currentBid ? parseFloat(auction.currentBid) : null,
+  };
+};
+
 export const updateAuction = async (req, res) => {
-  return res
-    .status(501)
-    .json({ success: false, message: 'updateAuction not implemented yet' });
+  try {
+    const { id } = req.params;
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const body = updateAuctionSchema.parse(req.body);
+
+    const auction = await prisma.auction.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        sellerId: true,
+        status: true,
+        startsAt: true,
+        durationMinutes: true,
+        startingBid: true,
+        buyNowPrice: true,
+      },
+    });
+
+    if (!auction) {
+      return res.status(404).json({ success: false, message: 'Auction not found' });
+    }
+
+    if (auction.sellerId !== userId) {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+
+    if (!EDITABLE_AUCTION_STATUSES.includes(auction.status)) {
+      return res.status(409).json({
+        success: false,
+        message: 'Only draft or scheduled auctions can be edited',
+      });
+    }
+
+    const bidCount = await prisma.bid.count({ where: { auctionId: id } });
+    const touchesBidLockedField = Object.keys(body).some(key => BID_LOCKED_UPDATE_FIELDS.has(key));
+
+    if (bidCount > 0 && touchesBidLockedField) {
+      return res.status(409).json({
+        success: false,
+        message: 'Cannot change pricing or schedule after bids have been placed',
+      });
+    }
+
+    const nextStartingBid =
+      body.startingBid !== undefined ? body.startingBid : Number(auction.startingBid);
+    const nextBuyNowPrice =
+      body.buyNowPrice !== undefined
+        ? body.buyNowPrice
+        : auction.buyNowPrice != null
+          ? Number(auction.buyNowPrice)
+          : null;
+
+    if (nextBuyNowPrice != null && nextBuyNowPrice <= nextStartingBid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Buy now price must be higher than starting bid',
+      });
+    }
+
+    const nextStartsAt = body.startsAt !== undefined ? body.startsAt : auction.startsAt;
+    const nextDurationMinutes =
+      body.durationMinutes !== undefined ? body.durationMinutes : auction.durationMinutes;
+
+    const data = {
+      ...(body.title !== undefined && { title: body.title }),
+      ...(body.description !== undefined && { description: body.description }),
+      ...(body.images !== undefined && { images: body.images }),
+      ...(body.categoryId !== undefined && { categoryId: body.categoryId }),
+      ...(body.startingBid !== undefined && { startingBid: body.startingBid }),
+      ...(body.buyNowPrice !== undefined && { buyNowPrice: body.buyNowPrice }),
+      ...(body.durationMinutes !== undefined && { durationMinutes: body.durationMinutes }),
+      ...(body.startsAt !== undefined && { startsAt: body.startsAt }),
+    };
+
+    if (body.startsAt !== undefined || body.durationMinutes !== undefined) {
+      data.endsAt = new Date(nextStartsAt.getTime() + nextDurationMinutes * 60 * 1000);
+    }
+
+    if (body.startsAt !== undefined) {
+      data.status = nextStartsAt <= new Date() ? 'live' : 'scheduled';
+    }
+
+    const updated = await prisma.auction.update({
+      where: { id },
+      data,
+      include: {
+        seller: {
+          select: { id: true, username: true, avatarUrl: true },
+        },
+        category: true,
+        _count: { select: { bids: true } },
+      },
+    });
+
+    return res.json({
+      success: true,
+      auction: formatAuctionForApi(updated),
+    });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return res.status(400).json({
+        success: false,
+        message: error.errors[0]?.message || 'Validation failed',
+        errors: error.errors,
+      });
+    }
+    console.error('updateAuction error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to update auction' });
+  }
 };
 
 export const deleteAuction = async (req, res) => {
@@ -430,26 +554,26 @@ export const deleteAuction = async (req, res) => {
       });
     }
 
-    await prisma.auction.update({
+    const updated = await prisma.auction.update({
       where: { id },
       data: { status: 'cancelled' },
+      include: {
+        category: true,
+        _count: { select: { bids: true } },
+      },
     });
 
-    return res.status(200).json({ success: true, message: 'Auction cancelled' });
+    emitAuctionEnd(id, { auctionId: id, status: 'cancelled' });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Auction cancelled',
+      auction: formatAuctionForApi(updated),
+    });
   } catch (error) {
     console.error('deleteAuction error:', error);
     return res.status(500).json({ success: false, message: 'Failed to cancel auction' });
   }
-};
-
-const formatAuctionForApi = auction => {
-  if (!auction) return auction;
-  return {
-    ...auction,
-    startingBid: parseFloat(auction.startingBid),
-    buyNowPrice: auction.buyNowPrice ? parseFloat(auction.buyNowPrice) : null,
-    currentBid: auction.currentBid ? parseFloat(auction.currentBid) : null,
-  };
 };
 
 export const getMySellingAuctions = async (req, res) => {

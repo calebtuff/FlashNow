@@ -54,8 +54,10 @@ export const updateAuctionSchema = z.object({
   categoryId: z.string().uuid().nullable().optional(),
   startingBid: z.number().positive().optional(),
   buyNowPrice: z.number().positive().nullable().optional(),
-  durationMinutes: z.number().int().min(5).max(15).optional(),
+  durationMinutes: z.number().int().min(5).max(30).optional(),
   startsAt: z.coerce.date().optional(),
+}).refine((data) => Object.keys(data).length > 0, {
+  message: 'At least one field is required',
 });
 
 export const searchSortSchema = z.enum(['ending_soon', 'newest', 'price_low', 'price_high']);

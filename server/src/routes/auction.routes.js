@@ -23,7 +23,7 @@ router.get('/search', searchAuctions);
 router.get('/:id', optionalAuth, getAuctionById);
 router.post('/:id/bids', requireAuth, placeBid);
 router.post('/', requireAuth, createAuction);
-router.put('/:id', updateAuction);
+router.put('/:id', requireAuth, updateAuction);
 router.delete('/:id', requireAuth, deleteAuction);
 
 export default router;

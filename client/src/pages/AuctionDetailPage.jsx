@@ -6,10 +6,12 @@ import CountdownStrip from '../components/CountdownStrip.jsx';
 import RateSellerForm from '../components/RateSellerForm.jsx';
 import Stars from '../components/Stars.jsx';
 import FavoriteButton from '../components/FavoriteButton.jsx';
+import UserAvatar from '../components/UserAvatar.jsx';
+import AuctionImagePlaceholder from '../components/AuctionImagePlaceholder.jsx';
 import useAuctionSocket from '../hooks/useAuctionSocket.js';
 import { api } from '../services/api.js';
 import { useAuth } from '../context/AuthContext.jsx';
-import { bidCountOf, currentPrice, auctionTimeMeta, formatAuctionDateTime, imageOf, money } from '../utils/auction.js';
+import { bidCountOf, currentPrice, auctionTimeMeta, formatAuctionDateTime, money } from '../utils/auction.js';
 
 const TERMINAL_STATUSES = ['ended', 'completed', 'cancelled'];
 
@@ -35,11 +37,7 @@ function SellerCard({ seller }) {
       to={`/profile/${seller.id}`}
       className="mt-6 flex items-center gap-3 rounded-2xl border border-neutral-200 bg-white p-3 no-underline transition-colors hover:bg-neutral-50"
     >
-      <img
-        src={seller.avatarUrl || `https://i.pravatar.cc/80?u=${seller.id}`}
-        alt=""
-        className="h-10 w-10 rounded-full object-cover"
-      />
+      <UserAvatar user={seller} size="md" />
       <div className="min-w-0 flex-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Seller</p>
         <p className="font-bold text-neutral-900">{seller.username || 'Unknown seller'}</p>
@@ -78,8 +76,6 @@ function BidBox({ auction }) {
     mutationFn: (value) => api.post(`/auctions/${auction.id}/bids`, { amount: value }),
     onSuccess: () => {
       setAmount('');
-      queryClient.invalidateQueries({ queryKey: ['auction', auction.id] });
-      queryClient.invalidateQueries({ queryKey: ['auctions'] });
       queryClient.invalidateQueries({ queryKey: ['wallet'] });
       queryClient.invalidateQueries({ queryKey: ['my-bids'] });
     },
@@ -172,11 +168,7 @@ function BidHistory({ bids }) {
     <ul className="divide-y divide-neutral-200 overflow-hidden rounded-2xl border border-neutral-200 bg-white">
       {bids.map((b) => (
         <li key={b.id} className="flex items-center gap-3 px-4 py-3">
-          <img
-            src={b.user?.avatarUrl || `https://i.pravatar.cc/64?u=${b.user?.id ?? b.id}`}
-            alt=""
-            className="h-8 w-8 rounded-full object-cover"
-          />
+          <UserAvatar user={b.user} size="sm" />
           <span className="font-semibold text-neutral-800">{b.user?.username || 'Bidder'}</span>
           <span className="ml-auto font-headline font-extrabold text-neutral-900">{money(b.amount)}</span>
         </li>
@@ -225,15 +217,15 @@ export default function AuctionDetailPage() {
           <div className="grid gap-8 lg:grid-cols-2">
             <div>
               <div className="relative aspect-square overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-100">
-                <img
-                  src={
-                    Array.isArray(auction.images) && auction.images[activeImage]
-                      ? auction.images[activeImage]
-                      : imageOf(auction, 800)
-                  }
-                  alt={auction.title}
-                  className="h-full w-full object-cover"
-                />
+                {Array.isArray(auction.images) && auction.images[activeImage] ? (
+                  <img
+                    src={auction.images[activeImage]}
+                    alt={auction.title}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <AuctionImagePlaceholder iconClassName="text-[72px]" />
+                )}
                 <FavoriteButton auctionId={auction.id} variant="detail" />
               </div>
               {Array.isArray(auction.images) && auction.images.length > 1 && (

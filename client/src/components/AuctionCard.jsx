@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import Icon from './Icon.jsx';
 import CountdownStrip from './CountdownStrip.jsx';
+import FavoriteButton from './FavoriteButton.jsx';
 import { auctionTimeMeta, bidCountOf, currentPrice, formatAuctionDateTime, imageOf, money } from '../utils/auction.js';
 
 function cardBadges(a) {
@@ -33,13 +34,7 @@ export default function AuctionCard({ a }) {
             </span>
           ))}
         </div>
-        <button
-          type="button"
-          className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-white text-neutral-700 shadow-sm transition-colors hover:text-red-500"
-          aria-label="Save"
-        >
-          <Icon name="favorite" className="text-[18px]" />
-        </button>
+        <FavoriteButton auctionId={a.id} variant="card" />
         {dots > 1 && (
           <div className="absolute inset-x-0 bottom-3 flex justify-center gap-1.5">
             {Array.from({ length: dots }).map((_, i) => (

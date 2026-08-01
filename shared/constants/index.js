@@ -72,3 +72,5 @@ export const WALLET_LIMITS = {
   MAX_TOPUP: 10000,
   MIN_WITHDRAW: 10,
 };
+
+export * from './notifications.js';

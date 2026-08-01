@@ -21,6 +21,7 @@ export default function Navbar() {
 
   const accountLinks = [
     { to: profilePath, label: 'Profile', icon: 'person' },
+    { to: '/favorites', label: 'Saved', icon: 'favorite' },
     { to: '/my-auctions', label: 'My auctions', icon: 'gavel' },
     { to: '/my-bids', label: 'My bids', icon: 'local_offer' },
     { to: '/wallet', label: 'Wallet', icon: 'account_balance_wallet' },

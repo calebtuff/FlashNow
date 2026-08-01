@@ -5,6 +5,7 @@ import Icon from '../components/Icon.jsx';
 import CountdownStrip from '../components/CountdownStrip.jsx';
 import RateSellerForm from '../components/RateSellerForm.jsx';
 import Stars from '../components/Stars.jsx';
+import FavoriteButton from '../components/FavoriteButton.jsx';
 import useAuctionSocket from '../hooks/useAuctionSocket.js';
 import { api } from '../services/api.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -233,6 +234,7 @@ export default function AuctionDetailPage() {
                   alt={auction.title}
                   className="h-full w-full object-cover"
                 />
+                <FavoriteButton auctionId={auction.id} variant="detail" />
               </div>
               {Array.isArray(auction.images) && auction.images.length > 1 && (
                 <div className="mt-3 flex flex-wrap gap-2">

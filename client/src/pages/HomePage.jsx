@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import Icon from '../components/Icon.jsx';
 import CountdownStrip from '../components/CountdownStrip.jsx';
 import AuctionCard from '../components/AuctionCard.jsx';
+import FavoriteButton from '../components/FavoriteButton.jsx';
 import { api } from '../services/api.js';
 import { bidCountOf, currentPrice, money } from '../utils/auction.js';
 
@@ -75,13 +76,6 @@ function FeaturedFallback() {
         <span className="absolute left-3 top-3 rounded bg-red-600 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-white">
           Ending now
         </span>
-        <button
-          type="button"
-          className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full border border-white/35 bg-white/15 text-white shadow-sm backdrop-blur-sm transition-colors hover:bg-white/25"
-          aria-label="Save"
-        >
-          <Icon name="favorite" className="text-[22px] drop-shadow-sm" />
-        </button>
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent px-4 pb-4 pt-16 text-center">
           <p className="text-xs font-semibold uppercase tracking-widest text-white/80">Ends in</p>
           <div className="mt-1 flex justify-center">
@@ -187,13 +181,7 @@ export default function HomePage() {
                 <span className="absolute left-3 top-3 rounded bg-red-600 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-white">
                   Ending now
                 </span>
-                <button
-                  type="button"
-                  className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full border border-white/35 bg-white/15 text-white shadow-sm backdrop-blur-sm transition-colors hover:bg-white/25"
-                  aria-label="Save"
-                >
-                  <Icon name="favorite" className="text-[22px] drop-shadow-sm" />
-                </button>
+                <FavoriteButton auctionId={featured.id} variant="featured" />
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent px-4 pb-4 pt-16 text-center">
                   <p className="text-xs font-semibold uppercase tracking-widest text-white/80">Ends in</p>
                   <div className="mt-1 flex justify-center">

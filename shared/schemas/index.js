@@ -4,3 +4,5 @@ export * from './bid.js';
 export * from './wallet.js';
 export * from './chat.js';
 export * from './rating.js';
+export * from './notification.js';
+export * from './favorite.js';

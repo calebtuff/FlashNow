@@ -14,6 +14,9 @@ export const SOCKET_EVENTS = {
   BID_ERROR: 'bid:error',
   OUTBID: 'bid:outbid',
 
+  FEED_BID_UPDATE: 'feed:bid',
+  FEED_AUCTION_END: 'feed:auction-end',
+
   CHAT_SEND: 'chat:send',
   CHAT_RECEIVE: 'chat:receive',
   CHAT_HISTORY: 'chat:history',
@@ -72,3 +75,5 @@ export const WALLET_LIMITS = {
   MAX_TOPUP: 10000,
   MIN_WITHDRAW: 10,
 };
+
+export * from './notifications.js';

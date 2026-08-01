@@ -15,3 +15,7 @@ export function auctionRoomId(auctionId) {
 export function userRoomId(userId) {
   return `user:${userId}`;
 }
+
+export function liveFeedRoomId() {
+  return 'app:live';
+}

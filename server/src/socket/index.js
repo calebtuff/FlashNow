@@ -1,6 +1,6 @@
 import { Server } from 'socket.io';
 import { verifyAccessToken } from '../middleware/auth.js';
-import { setIo, userRoomId } from '../lib/socket.js';
+import { setIo, userRoomId, liveFeedRoomId } from '../lib/socket.js';
 import { registerAuctionHandlers } from './auctionRoom.js';
 
 export function initSocket(httpServer, { allowedOrigins }) {
@@ -26,6 +26,8 @@ export function initSocket(httpServer, { allowedOrigins }) {
   });
 
   io.on('connection', (socket) => {
+    socket.join(liveFeedRoomId());
+
     const userId = socket.data.user?.id;
     if (userId) {
       socket.join(userRoomId(userId));

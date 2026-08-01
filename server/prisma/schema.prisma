@@ -25,6 +25,7 @@ model User {
   ratingsReceived  Rating[]        @relation("RatingsReceived")
   notifications    Notification[]
   mutedInAuctions  AuctionMute[]
+  favorites        AuctionFavorite[]
 
   @@map("users")
 }
@@ -101,6 +102,7 @@ model Auction {
   ratings       Rating[]
   transactions  WalletTransaction[]
   mutedUsers    AuctionMute[]
+  favorites     AuctionFavorite[]
 
   @@index([status])
   @@index([startsAt])
@@ -190,4 +192,18 @@ model AuctionMute {
 
   @@unique([auctionId, userId])
   @@map("auction_mutes")
+}
+
+model AuctionFavorite {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  auctionId String   @map("auction_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, auctionId])
+  @@index([userId, createdAt])
+  @@map("auction_favorites")
 }

@@ -6,6 +6,7 @@ import { trySettleAuctionIfExpired } from '../services/auctionEngine.js';
 import { computeExtendedEndsAt } from '../utils/bidExtension.js';
 import { emitBidUpdate, emitAuctionEnd } from '../socket/emitters.js';
 import { createNotification, notifySafely } from '../services/notificationService.js';
+import { buyNowAuction as executeBuyNow } from '../services/buyNowService.js';
 
 export const getAllAuctions = async (req, res) => {
   try {
@@ -65,7 +66,7 @@ export const getAuctionById = async (req, res) => {
     }
 
     const viewerId = req.user?.id ?? null;
-    const [sellerRatingAgg, viewerExistingRating] = await Promise.all([
+    const [sellerRatingAgg, viewerExistingRating, viewerFavorite] = await Promise.all([
       prisma.rating.aggregate({
         where: { toUserId: auction.sellerId },
         _avg: { score: true },
@@ -77,6 +78,14 @@ export const getAuctionById = async (req, res) => {
               fromUserId_auctionId: { fromUserId: viewerId, auctionId: id },
             },
             select: { score: true, comment: true, createdAt: true },
+          })
+        : Promise.resolve(null),
+      viewerId
+        ? prisma.auctionFavorite.findUnique({
+            where: {
+              userId_auctionId: { userId: viewerId, auctionId: id },
+            },
+            select: { id: true },
           })
         : Promise.resolve(null),
     ]);
@@ -116,6 +125,7 @@ export const getAuctionById = async (req, res) => {
         amount: parseFloat(b.amount),
       })),
       viewerRating,
+      isFavorited: Boolean(viewerFavorite),
     };
 
     res.json({ success: true, auction: formatted });
@@ -377,6 +387,30 @@ export const placeBid = async (req, res) => {
     }
     console.error('placeBid error:', error);
     return res.status(500).json({ success: false, message: 'Failed to place bid' });
+  }
+};
+
+export const buyNow = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { id: auctionId } = req.params;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const auction = await executeBuyNow(auctionId, userId);
+
+    return res.json({
+      success: true,
+      auction,
+    });
+  } catch (error) {
+    if (error?.httpCode) {
+      return res.status(error.httpCode).json({ success: false, message: error.httpMessage });
+    }
+    console.error('buyNow error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to complete buy now purchase' });
   }
 };
 

@@ -8,6 +8,7 @@ import Stars from '../components/Stars.jsx';
 import FavoriteButton from '../components/FavoriteButton.jsx';
 import UserAvatar from '../components/UserAvatar.jsx';
 import AuctionImagePlaceholder from '../components/AuctionImagePlaceholder.jsx';
+import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import useAuctionSocket from '../hooks/useAuctionSocket.js';
 import { api } from '../services/api.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -52,6 +53,108 @@ function SellerCard({ seller }) {
       </div>
       <Icon name="chevron_right" className="shrink-0 text-[22px] text-neutral-400" />
     </Link>
+  );
+}
+
+function BuyNowBox({ auction }) {
+  const queryClient = useQueryClient();
+  const { userId, isAuthenticated } = useAuth();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const endTime = auction.endsAt ? new Date(auction.endsAt).getTime() : null;
+  const ended =
+    TERMINAL_STATUSES.includes(auction.status) || (endTime != null && endTime <= Date.now());
+  const buyNowPrice = auction.buyNowPrice != null ? Number(auction.buyNowPrice) : null;
+  const isSeller = userId && auction.sellerId === userId;
+  const canBuyNow =
+    buyNowPrice != null &&
+    auction.status === 'live' &&
+    !ended &&
+    !isSeller;
+
+  const walletQuery = useQuery({
+    queryKey: ['wallet', userId],
+    queryFn: () => api.get('/wallet'),
+    enabled: isAuthenticated && canBuyNow,
+  });
+  const available = walletQuery.data?.wallet?.availableBalance;
+  const insufficientFunds =
+    isAuthenticated && typeof available === 'number' && available < buyNowPrice;
+
+  const buyNow = useMutation({
+    mutationFn: () => api.post(`/auctions/${auction.id}/buy-now`),
+    onSuccess: (data) => {
+      setConfirmOpen(false);
+      if (data?.auction) {
+        queryClient.setQueryData(['auction', auction.id], { success: true, auction: data.auction });
+      }
+      queryClient.invalidateQueries({ queryKey: ['wallet'] });
+      queryClient.invalidateQueries({ queryKey: ['my-bids'] });
+    },
+  });
+
+  if (!canBuyNow) return null;
+
+  return (
+    <>
+      <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4">
+        <p className="text-xs font-bold uppercase tracking-wide text-emerald-800">Buy now</p>
+        <p className="mt-1 font-headline text-2xl font-extrabold text-neutral-900">{money(buyNowPrice)}</p>
+        <p className="mt-1 text-xs text-neutral-600">Instant purchase — ends the auction immediately.</p>
+
+        {!isAuthenticated ? (
+          <p className="mt-3 text-sm text-neutral-600">
+            <Link to={`/login?redirect=${encodeURIComponent(window.location.pathname)}`} className="font-semibold text-neutral-900">
+              Sign in
+            </Link>{' '}
+            to buy now.
+          </p>
+        ) : (
+          <>
+            {typeof available === 'number' && (
+              <p className="mt-2 text-xs text-neutral-600">
+                Available balance:{' '}
+                <span className="font-semibold text-neutral-800">{money(available)}</span>
+              </p>
+            )}
+            {insufficientFunds && (
+              <p className="mt-1 text-xs font-semibold text-red-600">
+                Insufficient balance.{' '}
+                <Link to="/wallet" className="underline">
+                  Top up wallet
+                </Link>
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => setConfirmOpen(true)}
+              disabled={buyNow.isPending || insufficientFunds}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {buyNow.isPending ? 'Processing…' : `Buy now for ${money(buyNowPrice)}`}
+              {!buyNow.isPending && <Icon name="shopping_bag" className="text-[18px]" />}
+            </button>
+            {buyNow.isError && (
+              <p className="mt-2 text-xs font-semibold text-red-600">
+                {buyNow.error?.message || 'Could not complete buy now. Try again.'}
+              </p>
+            )}
+          </>
+        )}
+      </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Confirm buy now"
+        message={`Buy "${auction.title}" now for ${money(buyNowPrice)}? This ends the auction immediately and cannot be undone.`}
+        confirmLabel={`Buy for ${money(buyNowPrice)}`}
+        onConfirm={() => buyNow.mutate()}
+        onClose={() => {
+          if (!buyNow.isPending) setConfirmOpen(false);
+        }}
+        isPending={buyNow.isPending}
+      />
+    </>
   );
 }
 
@@ -296,7 +399,9 @@ export default function AuctionDetailPage() {
               {isCompleted && isWinner && (
                 <div className="mt-4 space-y-4">
                   <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-900">
-                    You won this auction!
+                    {auction.buyNowPrice != null && Number(auction.currentBid) === Number(auction.buyNowPrice)
+                      ? 'You bought this item!'
+                      : 'You won this auction!'}
                   </div>
                   <RateSellerForm
                     auctionId={auction.id}
@@ -314,6 +419,7 @@ export default function AuctionDetailPage() {
                 </div>
               )}
 
+              <BuyNowBox auction={auction} />
               <BidBox auction={auction} />
               <SellerCard seller={auction.seller} />
 

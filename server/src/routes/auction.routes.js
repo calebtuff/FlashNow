@@ -10,6 +10,7 @@ import {
   getFeed,
   searchAuctions,
   placeBid,
+  buyNow,
 } from '../controllers/auction.controller.js';
 import { requireAuth, optionalAuth } from '../middleware/auth.js';
 
@@ -22,6 +23,7 @@ router.get('/feed', getFeed);
 router.get('/search', searchAuctions);
 router.get('/:id', optionalAuth, getAuctionById);
 router.post('/:id/bids', requireAuth, placeBid);
+router.post('/:id/buy-now', requireAuth, buyNow);
 router.post('/', requireAuth, createAuction);
 router.put('/:id', requireAuth, updateAuction);
 router.delete('/:id', requireAuth, deleteAuction);

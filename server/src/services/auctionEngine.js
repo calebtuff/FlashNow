@@ -2,6 +2,10 @@ import prisma from '../lib/prisma.js';
 import { ENDING_SOON_WINDOW_MS, NOTIFICATION_TYPES } from 'shared/constants';
 import { emitAuctionEnd } from '../socket/emitters.js';
 import {
+  creditSellerWallet,
+  debitBuyerFromHeldFunds,
+} from './auctionCompletion.js';
+import {
   createNotification,
   hasNotificationForAuction,
   notifySafely,
@@ -66,11 +70,15 @@ export async function settleAuction(auctionId, now = new Date()) {
       return { ok: updated.count > 0, reason: 'winner_wallet_missing', status: 'ended' };
     }
 
-    const winnerBalance = Number(winnerWallet.balance);
-    const winnerHeld = Number(winnerWallet.heldBalance);
-    if (winnerHeld < winAmount || winnerBalance < winAmount) {
+    const payment = await debitBuyerFromHeldFunds(tx, {
+      userId: winnerId,
+      amount: winAmount,
+      auctionId,
+    });
+
+    if (!payment.ok) {
       console.error(
-        `Settlement: winner funds mismatch for auction ${auctionId} (held=${winnerHeld}, balance=${winnerBalance}, win=${winAmount})`
+        `Settlement: winner funds mismatch for auction ${auctionId} (reason=${payment.reason})`
       );
       const updated = await tx.auction.updateMany({
         where: { id: auctionId, status: 'live' },
@@ -79,41 +87,10 @@ export async function settleAuction(auctionId, now = new Date()) {
       return { ok: false, reason: 'winner_insufficient_funds', status: 'ended' };
     }
 
-    await tx.wallet.update({
-      where: { id: winnerWallet.id },
-      data: {
-        balance: { decrement: winAmount },
-        heldBalance: { decrement: winAmount },
-      },
-    });
-    await tx.walletTransaction.create({
-      data: {
-        walletId: winnerWallet.id,
-        type: 'debit',
-        amount: winAmount,
-        auctionId,
-        description: 'Auction payment',
-      },
-    });
-
-    let sellerWallet = await tx.wallet.findUnique({ where: { userId: sellerId } });
-    if (!sellerWallet) {
-      sellerWallet = await tx.wallet.create({
-        data: { userId: sellerId, balance: 0, heldBalance: 0 },
-      });
-    }
-    await tx.wallet.update({
-      where: { id: sellerWallet.id },
-      data: { balance: { increment: winAmount } },
-    });
-    await tx.walletTransaction.create({
-      data: {
-        walletId: sellerWallet.id,
-        type: 'credit',
-        amount: winAmount,
-        auctionId,
-        description: 'Sale proceeds',
-      },
+    await creditSellerWallet(tx, {
+      sellerId,
+      amount: winAmount,
+      auctionId,
     });
 
     const updated = await tx.auction.updateMany({

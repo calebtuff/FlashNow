@@ -1,5 +1,6 @@
 import cors from 'cors';
 import express from 'express';
+import stripeRoutes from './routes/stripe.routes.js';
 import auctionRoutes from './routes/auction.routes.js';
 import userRoutes from './routes/user.routes.js';
 import walletRoutes from './routes/wallet.routes.js';
@@ -21,6 +22,10 @@ app.use(
     credentials: true,
   })
 );
+
+// Stripe webhooks require the raw request body for signature verification.
+app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }), stripeRoutes);
+
 app.use(express.json());
 
 // API routes

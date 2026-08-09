@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from '../components/Icon.jsx';
 import { api } from '../services/api.js';
@@ -143,11 +143,16 @@ function FundForm({ title, hint, amount, onAmountChange, onSubmit, isPending, er
 export default function WalletPage() {
   const { userId, isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [topupAmount, setTopupAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [topupError, setTopupError] = useState('');
   const [withdrawError, setWithdrawError] = useState('');
+  const [topupBanner, setTopupBanner] = useState(null);
+
+  const topupResult = searchParams.get('topup');
+  const checkoutSessionId = searchParams.get('session_id');
 
   const walletQuery = useQuery({
     queryKey: ['wallet', userId],
@@ -162,7 +167,69 @@ export default function WalletPage() {
   });
 
   const wallet = walletQuery.data?.wallet;
+  const payments = walletQuery.data?.payments;
+  const stripeTopupEnabled = payments?.mode === 'stripe';
   const transactions = transactionsQuery.data?.transactions ?? [];
+
+  useEffect(() => {
+    if (topupResult === 'cancelled') {
+      setTopupBanner({ type: 'info', message: 'Checkout cancelled. No funds were added.' });
+      setSearchParams({}, { replace: true });
+      return;
+    }
+
+    if (topupResult !== 'success') return;
+
+    let cancelled = false;
+
+    async function confirmTopup() {
+      setTopupBanner({
+        type: 'pending',
+        message: 'Payment received. Updating your wallet…',
+      });
+
+      const maxAttempts = 8;
+      for (let attempt = 0; attempt < maxAttempts && !cancelled; attempt += 1) {
+        try {
+          if (checkoutSessionId) {
+            const status = await api.get('/wallet/checkout-status', {
+              query: { session_id: checkoutSessionId },
+            });
+            if (status.status === 'succeeded') {
+              await queryClient.invalidateQueries({ queryKey: ['wallet'] });
+              await queryClient.invalidateQueries({ queryKey: ['wallet-transactions'] });
+              setTopupBanner({
+                type: 'success',
+                message: `Top-up complete. ${money((status.amountCents ?? 0) / 100)} added to your wallet.`,
+              });
+              setSearchParams({}, { replace: true });
+              return;
+            }
+          }
+        } catch {
+          // Retry while webhook or fallback credit finishes.
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+
+      if (!cancelled) {
+        await queryClient.invalidateQueries({ queryKey: ['wallet'] });
+        await queryClient.invalidateQueries({ queryKey: ['wallet-transactions'] });
+        setTopupBanner({
+          type: 'info',
+          message: 'Payment submitted. Your balance should update shortly.',
+        });
+        setSearchParams({}, { replace: true });
+      }
+    }
+
+    confirmTopup();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [topupResult, checkoutSessionId, queryClient, setSearchParams]);
 
   const topup = useMutation({
     mutationFn: (amount) => api.post('/wallet/topup', { amount }),
@@ -173,6 +240,11 @@ export default function WalletPage() {
       queryClient.invalidateQueries({ queryKey: ['wallet-transactions'] });
     },
     onError: (err) => setTopupError(err?.message || 'Top-up failed.'),
+  });
+
+  const checkout = useMutation({
+    mutationFn: (amount) => api.post('/wallet/checkout-session', { amount }),
+    onError: (err) => setTopupError(err?.message || 'Could not start checkout.'),
   });
 
   const withdraw = useMutation({
@@ -201,6 +273,20 @@ export default function WalletPage() {
       setTopupError(`Maximum top-up is ${money(TOPUP_MAX)}.`);
       return;
     }
+
+    if (stripeTopupEnabled) {
+      checkout.mutate(amount, {
+        onSuccess: (data) => {
+          if (data?.url) {
+            window.location.href = data.url;
+          } else {
+            setTopupError('Checkout URL missing from server response.');
+          }
+        },
+      });
+      return;
+    }
+
     topup.mutate(amount);
   }
 
@@ -224,6 +310,13 @@ export default function WalletPage() {
   }
 
   const available = wallet?.availableBalance ?? 0;
+  const topupPending = stripeTopupEnabled ? checkout.isPending : topup.isPending;
+  const topupHint = stripeTopupEnabled
+    ? 'Secure checkout powered by Stripe. Minimum $5.'
+    : payments?.devTopupAllowed
+      ? 'Dev top-up for local testing. Minimum $5.'
+      : 'Top-ups are unavailable until Stripe is configured.';
+  const topupSubmitLabel = stripeTopupEnabled ? 'Continue to checkout' : 'Top up';
 
   return (
     <div className="space-y-6">
@@ -235,6 +328,21 @@ export default function WalletPage() {
       {walletQuery.isError && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
               {walletQuery.error?.message || 'Could not load wallet.'}
+            </div>
+          )}
+
+          {topupBanner && (
+            <div
+              className={[
+                'rounded-xl border px-4 py-3 text-sm font-medium',
+                topupBanner.type === 'success'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                  : topupBanner.type === 'pending'
+                    ? 'border-amber-200 bg-amber-50 text-amber-900'
+                    : 'border-neutral-200 bg-neutral-50 text-neutral-800',
+              ].join(' ')}
+            >
+              {topupBanner.message}
             </div>
           )}
 
@@ -256,17 +364,17 @@ export default function WalletPage() {
             <div className="space-y-3">
               <FundForm
                 title="Add funds"
-                hint="Dev top-up — Stripe payments coming later. Minimum $5."
+                hint={topupHint}
                 amount={topupAmount}
                 onAmountChange={(v) => {
                   setTopupAmount(v);
                   setTopupError('');
                 }}
                 onSubmit={handleTopup}
-                isPending={topup.isPending}
+                isPending={topupPending}
                 error={topupError}
-                submitLabel="Top up"
-                disabled={topup.isPending}
+                submitLabel={topupSubmitLabel}
+                disabled={topupPending || (!stripeTopupEnabled && !payments?.devTopupAllowed)}
               />
               <div className="flex flex-wrap gap-2 px-1">
                 {QUICK_AMOUNTS.map((a) => (

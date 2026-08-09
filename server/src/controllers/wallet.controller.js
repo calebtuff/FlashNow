@@ -1,9 +1,14 @@
 import { ZodError } from 'zod';
 import prisma from '../lib/prisma.js';
 import { topupSchema, withdrawSchema } from 'shared';
+import { isDevTopupAllowed, isStripeConfigured } from '../lib/stripe.js';
+import {
+  createWalletCheckoutSession,
+  getCheckoutSessionStatus,
+} from '../services/stripeService.js';
 
 function getUserIdFromRequest(req) {
-  return req.user?.id || req.query?.userId || req.body?.userId || null;
+  return req.user?.id ?? null;
 }
 
 function formatWallet(wallet) {
@@ -23,7 +28,7 @@ export const getWallet = async (req, res) => {
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: 'Missing userId. Pass ?userId=... (temporary until auth is added).',
+        message: 'Unauthorized',
       });
     }
 
@@ -34,7 +39,14 @@ export const getWallet = async (req, res) => {
       });
     }
 
-    return res.json({ success: true, wallet: formatWallet(wallet) });
+    return res.json({
+      success: true,
+      wallet: formatWallet(wallet),
+      payments: {
+        mode: isStripeConfigured() ? 'stripe' : 'dev',
+        devTopupAllowed: isDevTopupAllowed(),
+      },
+    });
   } catch (error) {
     console.error('getWallet error:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch wallet' });
@@ -47,7 +59,7 @@ export const getWalletTransactions = async (req, res) => {
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: 'Missing userId. Pass ?userId=... (temporary until auth is added).',
+        message: 'Unauthorized',
       });
     }
 
@@ -84,7 +96,14 @@ export const topupWallet = async (req, res) => {
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: 'Missing userId. Pass userId in body (temporary until auth is added).',
+        message: 'Unauthorized',
+      });
+    }
+
+    if (isStripeConfigured() && !isDevTopupAllowed()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Use Stripe checkout to add funds.',
       });
     }
 
@@ -129,7 +148,7 @@ export const withdrawWallet = async (req, res) => {
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: 'Missing userId. Pass userId in body (temporary until auth is added).',
+        message: 'Unauthorized',
       });
     }
 
@@ -173,6 +192,77 @@ export const withdrawWallet = async (req, res) => {
     }
     console.error('withdrawWallet error:', error);
     return res.status(500).json({ success: false, message: 'Failed to withdraw funds' });
+  }
+};
+
+export const createCheckoutSession = async (req, res) => {
+  try {
+    const userId = getUserIdFromRequest(req);
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized',
+      });
+    }
+
+    if (!isStripeConfigured()) {
+      return res.status(503).json({
+        success: false,
+        message: 'Stripe is not configured on this server.',
+      });
+    }
+
+    const amountRaw = req.body?.amount;
+    const session = await createWalletCheckoutSession(userId, req.user?.email, amountRaw);
+
+    return res.json({
+      success: true,
+      url: session.url,
+      sessionId: session.sessionId,
+    });
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: error.errors,
+      });
+    }
+    if (error?.httpCode) {
+      return res.status(error.httpCode).json({ success: false, message: error.httpMessage });
+    }
+    console.error('createCheckoutSession error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to create checkout session' });
+  }
+};
+
+export const getTopupSessionStatus = async (req, res) => {
+  try {
+    const userId = getUserIdFromRequest(req);
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized',
+      });
+    }
+
+    if (!isStripeConfigured()) {
+      return res.status(503).json({
+        success: false,
+        message: 'Stripe is not configured on this server.',
+      });
+    }
+
+    const sessionId = req.query.session_id;
+    const status = await getCheckoutSessionStatus(sessionId, userId);
+
+    return res.json({ success: true, ...status });
+  } catch (error) {
+    if (error?.httpCode) {
+      return res.status(error.httpCode).json({ success: false, message: error.httpMessage });
+    }
+    console.error('getTopupSessionStatus error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch checkout status' });
   }
 };
 

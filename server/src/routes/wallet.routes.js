@@ -4,21 +4,20 @@ import {
   getWalletTransactions,
   topupWallet,
   withdrawWallet,
+  createCheckoutSession,
+  getTopupSessionStatus,
 } from '../controllers/wallet.controller.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// GET /api/wallet?userId=...
+router.use(requireAuth);
+
 router.get('/', getWallet);
-
-// GET /api/wallet/transactions?userId=...
 router.get('/transactions', getWalletTransactions);
-
-// POST /api/wallet/topup { userId, amount }
+router.get('/checkout-status', getTopupSessionStatus);
+router.post('/checkout-session', createCheckoutSession);
 router.post('/topup', topupWallet);
-
-// POST /api/wallet/withdraw { userId, amount }
 router.post('/withdraw', withdrawWallet);
 
 export default router;
-

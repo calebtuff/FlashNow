@@ -116,10 +116,39 @@ export default function Register({ auction, row = 0 }) {
               </Link>
             </h3>
 
-            <div className="mt-t2 flex items-center gap-t3">
+            {/* Provenance: which category the lot sits in and who is selling
+                it. Both already travel with every row, and neither used to be
+                printed. Separated by engraved hairlines rather than
+                punctuation, and the seller drops below sm, where the row is
+                narrow enough that the title was already fighting for width.
+
+                Neither is a link. The whole row is a click target via the
+                title's overlay, so a nested anchor here would have to be
+                lifted above it the way the save control is, and two competing
+                destinations on one row is not worth the metadata. */}
+            <div className="mt-t2 flex items-center gap-t2">
               <span className="legend shrink-0 text-tick text-lume-faint">
                 <span className="numeral">{bids}</span> {bids === 1 ? 'bid' : 'bids'}
               </span>
+
+              {auction.category?.name && (
+                <>
+                  <span className="h-3 w-px shrink-0 bg-steel" aria-hidden />
+                  <span className="legend min-w-0 truncate text-tick text-lume-faint">
+                    {auction.category.name}
+                  </span>
+                </>
+              )}
+
+              {auction.seller?.username && (
+                <>
+                  <span className="hidden h-3 w-px shrink-0 bg-steel sm:block" aria-hidden />
+                  <span className="legend hidden min-w-0 truncate text-tick text-lume-faint sm:block">
+                    {auction.seller.username}
+                  </span>
+                </>
+              )}
+
               {lamp && (
                 <Lamp tone={lamp.tone} pulse={lamp.pulse} className="ml-auto shrink-0">
                   {lamp.text}

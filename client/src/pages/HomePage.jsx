@@ -9,7 +9,14 @@ import Alert from '../components/Alert.jsx';
 import { api } from '../services/api.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import useNow from '../hooks/useNow.js';
-import { auctionTimeMeta, currentPrice, money } from '../utils/auction.js';
+import {
+  CRITICAL_MS,
+  auctionTimeMeta,
+  currentPrice,
+  formatClock,
+  money,
+  remainingMs,
+} from '../utils/auction.js';
 
 const SORTS = [
   { key: 'closing', label: 'Closing' },
@@ -69,6 +76,65 @@ function MechanismStrip() {
           Sign in
         </Link>
       </div>
+    </div>
+  );
+}
+
+/** One sub-dial: a small tracked legend over a large tabular reading. */
+function Reading({ label, value, tone = 'text-lume' }) {
+  return (
+    <div className="min-w-0">
+      <p className="legend text-tick text-lume-faint">{label}</p>
+      <p className={`numeral mt-1 truncate text-title font-bold ${tone}`}>{value}</p>
+    </div>
+  );
+}
+
+/**
+ * The board's own readings, clustered above the lots they describe.
+ *
+ * An instrument gets its density from the small dials around the main one, and
+ * the board used to state nothing about itself but a row count. Every figure
+ * here is derived from data the page already holds, so the strip costs no
+ * request, and the two that move are driven by the same shared clock as every
+ * countdown beneath them.
+ *
+ * The shape is fixed at four readings even when one has nothing to report, so
+ * the strip does not change width as lots open and close under it.
+ */
+function BoardSummary({ running, opening, liveTotal, now }) {
+  if (running.length === 0 && opening.length === 0) return null;
+
+  const closing = running.filter((a) => {
+    const ms = remainingMs(a, now);
+    return ms != null && ms > 0 && ms <= CRITICAL_MS;
+  }).length;
+
+  // Summed over the rows actually listed, which is what "on the board" says.
+  // Above the server's cap that is a subset of everything running, and the
+  // line under the stack already states that the board is showing a subset.
+  const value = running.reduce((sum, a) => sum + currentPrice(a), 0);
+
+  const nextMs = opening.length ? new Date(opening[0].startsAt ?? 0).getTime() - now : null;
+  let nextOpens = '--';
+  if (nextMs != null) nextOpens = nextMs > 0 ? formatClock(nextMs) : 'Now';
+
+  return (
+    // No bottom margin: this sits inside the board's own `space-y-t8` rhythm.
+    <div className="register grid grid-cols-2 gap-x-t6 gap-y-t4 p-t4 sm:grid-cols-4">
+      <Reading label="Running" value={String(liveTotal).padStart(2, '0')} />
+
+      {/* A count of lots inside the anti-snipe window is a state, not
+          emphasis, so it takes the hand lamp only while there is one in it. */}
+      <Reading
+        label="Closing under 60s"
+        value={String(closing).padStart(2, '0')}
+        tone={closing > 0 ? 'text-hand' : 'text-lume'}
+      />
+      <Reading label="On the board" value={money(value)} />
+      {/* Counting toward an opening, so it stays lume: a lot about to open is
+          not urgent, whatever its clock says. */}
+      <Reading label="Next opens" value={nextOpens} />
     </div>
   );
 }
@@ -195,6 +261,8 @@ export default function HomePage() {
         <RegisterStackSkeleton label="Loading the board" />
       ) : (
         <div className="space-y-t8">
+          <BoardSummary running={running} opening={opening} liveTotal={liveTotal} now={now} />
+
           <section>
             {/* The heading states the real number of running lots, which is
                 also what the bezel prints, so the two never disagree. When the

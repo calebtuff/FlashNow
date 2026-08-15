@@ -1,76 +1,64 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from '../components/Icon.jsx';
-import CountdownStrip from '../components/CountdownStrip.jsx';
+import Countdown from '../components/Countdown.jsx';
+import TimeArc from '../components/TimeArc.jsx';
+import Lamp from '../components/Lamp.jsx';
 import RateSellerForm from '../components/RateSellerForm.jsx';
 import Stars from '../components/Stars.jsx';
 import FavoriteButton from '../components/FavoriteButton.jsx';
 import UserAvatar from '../components/UserAvatar.jsx';
-import AuctionImagePlaceholder from '../components/AuctionImagePlaceholder.jsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
+import EmptyState from '../components/EmptyState.jsx';
+import Alert from '../components/Alert.jsx';
+import BackLink from '../components/BackLink.jsx';
+import NoImagePlate from '../components/NoImagePlate.jsx';
 import useAuctionSocket from '../hooks/useAuctionSocket.js';
+import useCountdown from '../hooks/useCountdown.js';
 import { api } from '../services/api.js';
 import { useAuth } from '../context/AuthContext.jsx';
-import { bidCountOf, currentPrice, auctionTimeMeta, formatAuctionDateTime, money } from '../utils/auction.js';
-
-const TERMINAL_STATUSES = ['ended', 'completed', 'cancelled'];
+import {
+  auctionTimeMeta,
+  bidCountOf,
+  currentPrice,
+  formatAuctionDateTime,
+  isTerminal,
+  money,
+} from '../utils/auction.js';
 
 function Skeleton() {
   return (
-    <div className="grid gap-8 lg:grid-cols-2">
-      <div className="aspect-square animate-pulse rounded-2xl bg-neutral-200/80" />
-      <div className="space-y-4">
-        <div className="h-4 w-24 animate-pulse rounded bg-neutral-200/80" />
-        <div className="h-9 w-3/4 animate-pulse rounded bg-neutral-200/80" />
-        <div className="h-24 w-full animate-pulse rounded-2xl bg-neutral-200/80" />
-        <div className="h-32 w-full animate-pulse rounded-2xl bg-neutral-200/80" />
+    <div className="grid gap-t6 lg:grid-cols-[1.15fr_1fr]" aria-busy="true" aria-label="Loading lot">
+      <div className="aspect-[4/3] animate-pulse bg-high" />
+      <div className="register space-y-t4 p-t5">
+        <div className="scale-rule w-full opacity-40" />
+        <div className="h-16 w-40 animate-pulse bg-high" />
+        <div className="h-12 w-full animate-pulse bg-high" />
       </div>
     </div>
   );
 }
 
-function SellerCard({ seller }) {
-  if (!seller) return null;
-  const rating = seller.rating ?? { average: 0, count: 0 };
+/** One reading on the dial: a small engraved legend over a large numeral. */
+function Reading({ label, children, tone = 'text-lume', className = '' }) {
   return (
-    <Link
-      to={`/profile/${seller.id}`}
-      className="mt-6 flex items-center gap-3 rounded-2xl border border-neutral-200 bg-white p-3 no-underline transition-colors hover:bg-neutral-50"
-    >
-      <UserAvatar user={seller} size="md" />
-      <div className="min-w-0 flex-1">
-        <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Seller</p>
-        <p className="font-bold text-neutral-900">{seller.username || 'Unknown seller'}</p>
-        {rating.count > 0 && (
-          <div className="mt-1 flex items-center gap-1.5">
-            <Stars score={rating.average} size="sm" />
-            <span className="text-xs font-medium text-neutral-500">
-              {rating.average.toFixed(1)} ({rating.count})
-            </span>
-          </div>
-        )}
-      </div>
-      <Icon name="chevron_right" className="shrink-0 text-[22px] text-neutral-400" />
-    </Link>
+    <div className={className}>
+      <p className="legend text-tick text-lume-faint">{label}</p>
+      <p className={`numeral mt-1 text-register font-bold ${tone}`}>{children}</p>
+    </div>
   );
 }
 
-function BuyNowBox({ auction }) {
+function BuyNowRow({ auction }) {
   const queryClient = useQueryClient();
   const { userId, isAuthenticated } = useAuth();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const endTime = auction.endsAt ? new Date(auction.endsAt).getTime() : null;
-  const ended =
-    TERMINAL_STATUSES.includes(auction.status) || (endTime != null && endTime <= Date.now());
+  const ended = isTerminal(auction);
   const buyNowPrice = auction.buyNowPrice != null ? Number(auction.buyNowPrice) : null;
   const isSeller = userId && auction.sellerId === userId;
-  const canBuyNow =
-    buyNowPrice != null &&
-    auction.status === 'live' &&
-    !ended &&
-    !isSeller;
+  const canBuyNow = buyNowPrice != null && auction.status === 'live' && !ended && !isSeller;
 
   const walletQuery = useQuery({
     queryKey: ['wallet', userId],
@@ -78,8 +66,7 @@ function BuyNowBox({ auction }) {
     enabled: isAuthenticated && canBuyNow,
   });
   const available = walletQuery.data?.wallet?.availableBalance;
-  const insufficientFunds =
-    isAuthenticated && typeof available === 'number' && available < buyNowPrice;
+  const insufficientFunds = isAuthenticated && typeof available === 'number' && available < buyNowPrice;
 
   const buyNow = useMutation({
     mutationFn: () => api.post(`/auctions/${auction.id}/buy-now`),
@@ -97,56 +84,46 @@ function BuyNowBox({ auction }) {
 
   return (
     <>
-      <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4">
-        <p className="text-xs font-bold uppercase tracking-wide text-emerald-800">Buy now</p>
-        <p className="mt-1 font-headline text-2xl font-extrabold text-neutral-900">{money(buyNowPrice)}</p>
-        <p className="mt-1 text-xs text-neutral-600">Instant purchase — ends the auction immediately.</p>
-
-        {!isAuthenticated ? (
-          <p className="mt-3 text-sm text-neutral-600">
-            <Link to={`/login?redirect=${encodeURIComponent(window.location.pathname)}`} className="font-semibold text-neutral-900">
-              Sign in
-            </Link>{' '}
-            to buy now.
-          </p>
+      <div className="flex items-center justify-between gap-t4 border-t border-steel px-t4 py-t3">
+        <div>
+          <p className="legend text-tick text-lume-faint">Take it now</p>
+          <p className="numeral text-title font-bold text-lume">{money(buyNowPrice)}</p>
+        </div>
+        {isAuthenticated ? (
+          <button
+            type="button"
+            onClick={() => setConfirmOpen(true)}
+            disabled={buyNow.isPending || insufficientFunds}
+            className="ctl-ghost shrink-0"
+            title={insufficientFunds ? 'Not enough available balance' : undefined}
+          >
+            {buyNow.isPending ? 'Working' : 'Buy now'}
+          </button>
         ) : (
-          <>
-            {typeof available === 'number' && (
-              <p className="mt-2 text-xs text-neutral-600">
-                Available balance:{' '}
-                <span className="font-semibold text-neutral-800">{money(available)}</span>
-              </p>
-            )}
-            {insufficientFunds && (
-              <p className="mt-1 text-xs font-semibold text-red-600">
-                Insufficient balance.{' '}
-                <Link to="/wallet" className="underline">
-                  Top up wallet
-                </Link>
-              </p>
-            )}
-            <button
-              type="button"
-              onClick={() => setConfirmOpen(true)}
-              disabled={buyNow.isPending || insufficientFunds}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {buyNow.isPending ? 'Processing…' : `Buy now for ${money(buyNowPrice)}`}
-              {!buyNow.isPending && <Icon name="shopping_bag" className="text-[18px]" />}
-            </button>
-            {buyNow.isError && (
-              <p className="mt-2 text-xs font-semibold text-red-600">
-                {buyNow.error?.message || 'Could not complete buy now. Try again.'}
-              </p>
-            )}
-          </>
+          <Link to={`/login?redirect=/auctions/${auction.id}`} className="ctl-ghost shrink-0">
+            Sign in
+          </Link>
         )}
       </div>
 
+      {insufficientFunds && (
+        <p className="px-t4 pb-t3 text-micro text-caution">
+          Not enough available balance.{' '}
+          <Link to="/wallet" className="underline">
+            Top up
+          </Link>
+        </p>
+      )}
+      {buyNow.isError && (
+        <p className="px-t4 pb-t3 text-micro text-hand">
+          {buyNow.error?.message || 'Could not complete the purchase.'}
+        </p>
+      )}
+
       <ConfirmDialog
         open={confirmOpen}
-        title="Confirm buy now"
-        message={`Buy "${auction.title}" now for ${money(buyNowPrice)}? This ends the auction immediately and cannot be undone.`}
+        title="Buy this lot now"
+        message={`Take "${auction.title}" for ${money(buyNowPrice)}? This closes the auction immediately and cannot be undone.`}
         confirmLabel={`Buy for ${money(buyNowPrice)}`}
         onConfirm={() => buyNow.mutate()}
         onClose={() => {
@@ -158,15 +135,23 @@ function BuyNowBox({ auction }) {
   );
 }
 
-function BidBox({ auction }) {
+/**
+ * The control panel. Sticky on desktop and fixed to the bottom on mobile, so
+ * the bid control is never scrolled away from the clock it is racing. In the
+ * previous build this sat seventh in a stack of containers and left the
+ * viewport as soon as you read the description.
+ */
+function ControlPanel({ auction, extendedAt }) {
   const queryClient = useQueryClient();
   const { userId, isAuthenticated } = useAuth();
   const minNext = currentPrice(auction) + 1;
   const [amount, setAmount] = useState('');
+  const [showExtended, setShowExtended] = useState(false);
 
-  const endTime = auction.endsAt ? new Date(auction.endsAt).getTime() : null;
-  const ended =
-    TERMINAL_STATUSES.includes(auction.status) || (endTime != null && endTime <= Date.now());
+  const time = auctionTimeMeta(auction);
+  const { urgency, ended } = useCountdown(time.countdownIso);
+  const over = isTerminal(auction);
+  const leading = Boolean(userId && auction.currentWinnerId === userId);
 
   const walletQuery = useQuery({
     queryKey: ['wallet', userId],
@@ -184,98 +169,201 @@ function BidBox({ auction }) {
     },
   });
 
+  // Announce an extension for a few seconds after it lands.
+  useEffect(() => {
+    if (!extendedAt) return undefined;
+    setShowExtended(true);
+    const id = window.setTimeout(() => setShowExtended(false), 6000);
+    return () => window.clearTimeout(id);
+  }, [extendedAt]);
+
   const value = Number.parseFloat(amount);
   const tooLow = !Number.isNaN(value) && value < minNext;
-  const disabled = ended || !isAuthenticated || placeBid.isPending || amount === '' || Number.isNaN(value) || tooLow;
+  const overBalance = !Number.isNaN(value) && typeof available === 'number' && value > available;
+  const disabled =
+    over || ended || !isAuthenticated || placeBid.isPending || amount === '' || Number.isNaN(value) || tooLow;
 
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!disabled) placeBid.mutate(value);
-      }}
-      className="mt-6 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
-    >
-      <label className="text-xs font-bold uppercase tracking-wide text-neutral-500" htmlFor="bid-amount">
-        Your bid
-      </label>
-      <div className="mt-2 flex gap-2">
-        <div className="relative flex-1">
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-bold text-neutral-400">$</span>
-          <input
-            id="bid-amount"
-            type="number"
-            inputMode="decimal"
-            min={minNext}
-            step="1"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder={String(minNext)}
-            disabled={ended}
-            className="w-full rounded-xl border border-neutral-300 bg-white py-3 pl-7 pr-3 text-sm font-semibold text-neutral-900 outline-none focus:border-neutral-900 disabled:bg-neutral-100"
-          />
+    <div className="register">
+      <TimeArc auction={auction} />
+
+      <div className="p-t4">
+        <div className="flex items-start justify-between gap-t4">
+          <div>
+            <p className="legend text-tick text-lume-faint">{time.heading}</p>
+            <div className="mt-1">
+              {over || ended ? (
+                <span className="numeral text-register text-lume-faint">{time.dateTime}</span>
+              ) : (
+                <Countdown endsAt={time.countdownIso} size="dial" />
+              )}
+            </div>
+          </div>
+
+          <div className="shrink-0">
+            {over || ended ? (
+              <Lamp tone="off">Closed</Lamp>
+            ) : leading ? (
+              <Lamp tone="lead">You lead</Lamp>
+            ) : urgency === 'critical' ? (
+              <Lamp tone="critical" pulse>
+                Final call
+              </Lamp>
+            ) : (
+              <Lamp tone="live">Live</Lamp>
+            )}
+          </div>
         </div>
-        <button
-          type="submit"
-          disabled={disabled}
-          className="flex items-center gap-2 rounded-xl bg-neutral-900 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {placeBid.isPending ? 'Placing…' : 'Place bid'}
-          {!placeBid.isPending && <Icon name="gavel" className="text-[18px]" />}
-        </button>
+
+        {/* The signature mechanism, made visible. Without this the clock simply
+            jumps backwards and the bidder has no idea why. */}
+        {showExtended && (
+          <p className="jumped mt-t3 flex items-center gap-1.5 text-micro font-semibold text-radium">
+            <Icon name="restart_alt" className="text-[14px]" />
+            Extended 60 seconds: a bid landed in the final minute.
+          </p>
+        )}
+
+        <div className="mt-t4 flex items-end justify-between gap-t4 border-t border-steel pt-t3">
+          <Reading label="Current bid">{money(currentPrice(auction))}</Reading>
+          <div className="text-right">
+            <p className="legend text-tick text-lume-faint">Bids</p>
+            <p className="numeral mt-1 text-title font-semibold text-lume-dim">{bidCountOf(auction)}</p>
+          </div>
+        </div>
       </div>
 
-      <p className="mt-2 text-xs text-neutral-500">
-        {ended ? 'This auction has ended.' : `Enter ${money(minNext)} or more.`}
-      </p>
-      {isAuthenticated && typeof available === 'number' && (
-        <p className="mt-1 text-xs text-neutral-500">
-          Available balance: <span className="font-semibold text-neutral-700">{money(available)}</span>
-        </p>
+      {!over && !ended && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!disabled) placeBid.mutate(value);
+          }}
+          className="border-t border-steel p-t4"
+        >
+          <label className="field-label" htmlFor="bid-amount">
+            Your bid
+          </label>
+          <div className="flex gap-t2">
+            <div className="relative flex-1">
+              <span className="numeral pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-bold text-lume-faint">
+                $
+              </span>
+              <input
+                id="bid-amount"
+                type="number"
+                inputMode="decimal"
+                min={minNext}
+                step="1"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder={String(minNext)}
+                aria-invalid={tooLow || overBalance}
+                aria-describedby="bid-help"
+                className="field numeral pl-7 font-semibold"
+              />
+            </div>
+            <button type="submit" disabled={disabled} className="ctl-bid shrink-0 px-t5">
+              {placeBid.isPending ? 'Placing' : 'Place bid'}
+            </button>
+          </div>
+
+          {/* Figures a bidder reads while typing, so these stay sentence-case
+              at body-adjacent size rather than tracked 10px caps. */}
+          <p id="bid-help" className="mt-t2 flex flex-wrap gap-x-t4 text-micro text-lume-faint">
+            <span>
+              Minimum <span className="numeral font-semibold text-lume-dim">{money(minNext)}</span>
+            </span>
+            {isAuthenticated && typeof available === 'number' && (
+              <span>
+                Available <span className="numeral font-semibold text-lume-dim">{money(available)}</span>
+              </span>
+            )}
+          </p>
+
+          {tooLow && (
+            <p role="alert" className="mt-t2 text-micro text-hand">
+              Must be at least {money(minNext)}.
+            </p>
+          )}
+          {overBalance && !tooLow && (
+            <p role="alert" className="mt-t2 text-micro text-caution">
+              Above your available balance.{' '}
+              <Link to="/wallet" className="underline">
+                Top up
+              </Link>
+            </p>
+          )}
+          {placeBid.isError && (
+            <p role="alert" className="mt-t2 text-micro text-hand">
+              {placeBid.error?.message || 'Could not place the bid.'}
+            </p>
+          )}
+          {!isAuthenticated && (
+            <p className="mt-t3 text-micro text-lume-dim">
+              <Link to={`/login?redirect=/auctions/${auction.id}`} className="font-semibold text-lume underline">
+                Sign in
+              </Link>{' '}
+              to bid.
+            </p>
+          )}
+          {/* This is a sentence, not a label. All-caps tracked 10px made the
+              product's signature rule the hardest thing on the panel to read. */}
+          <p className="mt-t3 text-micro text-lume-faint">
+            A bid in the final minute extends the lot by 60 seconds.
+          </p>
+        </form>
       )}
-      {tooLow && <p className="mt-1 text-xs font-semibold text-red-600">Bid must be at least {money(minNext)}.</p>}
-      {!ended && (
-        <p className="mt-1 text-xs text-neutral-500">
-          Bids in the final minute extend the auction by 60 seconds.
-        </p>
-      )}
-      {placeBid.isError && (
-        <p className="mt-1 text-xs font-semibold text-red-600">
-          {placeBid.error?.message || 'Could not place bid. Try again.'}
-        </p>
-      )}
-      {placeBid.isSuccess && <p className="mt-1 text-xs font-semibold text-emerald-600">Bid placed!</p>}
-      {!isAuthenticated && !ended && (
-        <p className="mt-2 text-sm text-neutral-600">
-          <Link to={`/login?redirect=${encodeURIComponent(window.location.pathname)}`} className="font-semibold text-neutral-900">
-            Sign in
-          </Link>{' '}
-          to place a bid.
-        </p>
-      )}
-    </form>
+
+      <BuyNowRow auction={auction} />
+    </div>
   );
 }
 
-function BidHistory({ bids }) {
+/**
+ * Bid history as a printed tape: rank, amount, bidder, in strict descending
+ * order. The old version was an unordered list of names and prices with no
+ * sequence, which is the one thing a bid history exists to show.
+ */
+function BidTape({ bids, winnerId }) {
   if (!bids || bids.length === 0) {
-    return (
-      <div className="rounded-2xl border border-dashed border-neutral-300 bg-white/60 px-6 py-10 text-center">
-        <p className="font-headline text-base font-bold text-neutral-800">No bids yet</p>
-        <p className="mt-1 text-sm text-neutral-600">Be the first to place a bid.</p>
-      </div>
-    );
+    return <EmptyState icon="receipt_long" title="No bids yet" body="This lot has not been opened by anyone." />;
   }
 
+  const ordered = [...bids].sort((a, b) => Number(b.amount) - Number(a.amount));
+
   return (
-    <ul className="divide-y divide-neutral-200 overflow-hidden rounded-2xl border border-neutral-200 bg-white">
-      {bids.map((b) => (
-        <li key={b.id} className="flex items-center gap-3 px-4 py-3">
-          <UserAvatar user={b.user} size="sm" />
-          <span className="font-semibold text-neutral-800">{b.user?.username || 'Bidder'}</span>
-          <span className="ml-auto font-headline font-extrabold text-neutral-900">{money(b.amount)}</span>
-        </li>
-      ))}
+    <ul className="register divide-y divide-steel">
+      {ordered.map((b, i) => {
+        const leading = i === 0;
+        return (
+          <li
+            key={b.id}
+            className={`flex items-center gap-t3 px-t4 py-t3 ${leading ? 'bg-radium-track' : ''}`}
+          >
+            <span className="legend numeral w-8 shrink-0 text-tick text-lume-faint">
+              {String(ordered.length - i).padStart(2, '0')}
+            </span>
+            <UserAvatar user={b.user} size="sm" />
+            <span className="min-w-0 flex-1 truncate text-body text-lume-dim">
+              {b.user?.username || 'Bidder'}
+              {b.user?.id && b.user.id === winnerId && (
+                <span className="legend ml-t2 text-tick text-radium">high</span>
+              )}
+            </span>
+            {b.placedAt && (
+              <span className="legend numeral hidden shrink-0 text-tick text-lume-faint sm:block">
+                {formatAuctionDateTime(b.placedAt)}
+              </span>
+            )}
+            <span
+              className={`numeral shrink-0 text-title font-bold ${leading ? 'text-radium' : 'text-lume-dim'}`}
+            >
+              {money(b.amount)}
+            </span>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -284,7 +372,7 @@ export default function AuctionDetailPage() {
   const { id } = useParams();
   const [activeImage, setActiveImage] = useState(0);
   const { userId } = useAuth();
-  const { outbidMessage } = useAuctionSocket(id);
+  const { outbidMessage, extendedAt } = useAuctionSocket(id);
 
   const { data, isPending, isError, error } = useQuery({
     queryKey: ['auction', id],
@@ -294,115 +382,124 @@ export default function AuctionDetailPage() {
   const auction = data?.auction ?? null;
   const isWinner = userId && auction?.currentWinnerId === userId;
   const isCompleted = auction?.status === 'completed';
+  const images = Array.isArray(auction?.images) ? auction.images : [];
 
   return (
-    <div className="space-y-8">
-      <Link to="/" className="inline-flex items-center gap-1 text-sm font-semibold text-neutral-600 no-underline hover:text-neutral-900">
-        <Icon name="arrow_back" className="text-[18px]" />
-        Back to auctions
-      </Link>
+    <div className="space-y-t6">
+      <BackLink to="/">Back to the board</BackLink>
 
       {isPending ? (
         <Skeleton />
       ) : isError ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
-          {error?.message || 'Could not load this auction.'}
-        </div>
+        <Alert title="Could not load lot">{error?.message || 'This lot could not be reached.'}</Alert>
       ) : !auction ? (
-        <div className="rounded-2xl border border-dashed border-neutral-300 bg-white/60 px-6 py-16 text-center">
-          <p className="font-headline text-lg font-bold text-neutral-800">Auction not found</p>
-          <Link to="/" className="mt-4 inline-block rounded-xl bg-neutral-900 px-5 py-2.5 text-sm font-bold text-white no-underline">
-            Browse auctions
+        <EmptyState icon="search_off" title="Lot not found" body="It may have been withdrawn by the seller.">
+          <Link to="/" className="ctl-primary">
+            Back to the board
           </Link>
-        </div>
+        </EmptyState>
       ) : (
         <>
-          <div className="grid gap-8 lg:grid-cols-2">
-            <div>
-              <div className="relative aspect-square overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-100">
-                {Array.isArray(auction.images) && auction.images[activeImage] ? (
-                  <img
-                    src={auction.images[activeImage]}
-                    alt={auction.title}
-                    className="h-full w-full object-cover"
-                  />
+          <div className="grid gap-t6 lg:grid-cols-[1.15fr_1fr] lg:items-start">
+            <div className="space-y-t4">
+              {/* The 4:3 frame is reserved only when there is a photograph to
+                  put in it; without one the plate collapses to its own height
+                  instead of holding open an empty room. */}
+              <div className="relative border border-steel bg-sunken">
+                {images[activeImage] ? (
+                  <div className="aspect-[4/3] overflow-hidden">
+                    <img
+                      src={images[activeImage]}
+                      alt={auction.title}
+                      fetchPriority="high"
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
                 ) : (
-                  <AuctionImagePlaceholder iconClassName="text-[72px]" />
+                  <NoImagePlate />
                 )}
-                <FavoriteButton auctionId={auction.id} variant="detail" />
+                <FavoriteButton auctionId={auction.id} variant="dial" />
               </div>
-              {Array.isArray(auction.images) && auction.images.length > 1 && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {auction.images.map((src, i) => (
+
+              {images.length > 1 && (
+                <div className="flex flex-wrap gap-t2">
+                  {images.map((src, i) => (
                     <button
                       key={src}
                       type="button"
                       onClick={() => setActiveImage(i)}
+                      aria-label={`View image ${i + 1} of ${images.length}`}
+                      aria-pressed={i === activeImage}
                       className={[
-                        'h-16 w-16 overflow-hidden rounded-lg border-2',
-                        i === activeImage ? 'border-neutral-900' : 'border-transparent',
+                        'h-14 w-14 overflow-hidden border transition-colors duration-jump',
+                        i === activeImage ? 'border-lume' : 'border-steel hover:border-edge',
                       ].join(' ')}
                     >
-                      <img src={src} alt="" className="h-full w-full object-cover" />
+                      <img src={src} alt="" loading="lazy" className="h-full w-full object-cover" />
                     </button>
                   ))}
                 </div>
               )}
-            </div>
 
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-500">
-                {auction.category?.name ? String(auction.category.name).toUpperCase() : 'AUCTION'}
-              </p>
-              <h1 className="mt-1 font-headline text-3xl font-extrabold leading-tight text-neutral-900">
-                {auction.title}
-              </h1>
-
-              {(() => {
-                const time = auctionTimeMeta(auction);
-                return (
-                  <div className="mt-4 space-y-1">
-                    <div className="inline-flex items-center gap-2 rounded-xl bg-neutral-900 px-3 py-2">
-                      <Icon name="schedule" className="text-[16px] text-white/80" />
-                      <span className="text-[10px] font-semibold uppercase tracking-widest text-white/70">
-                        {time.heading}
-                      </span>
-                      {time.kind === 'ended' ? (
-                        <span className="text-xs font-semibold text-white">Ended</span>
-                      ) : (
-                        <CountdownStrip endsAt={time.countdownIso} />
-                      )}
-                    </div>
-                    <p className="text-sm text-neutral-500">
-                      {time.kind === 'scheduled' && `Starts ${time.dateTime}`}
-                      {time.kind === 'live' && `Ends ${time.dateTime}`}
-                      {time.kind === 'ended' && `Ended ${formatAuctionDateTime(auction.endsAt)}`}
-                    </p>
-                  </div>
-                );
-              })()}
-
-              <div className="mt-5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Current bid</p>
-                <p className="font-headline text-3xl font-extrabold text-neutral-900">
-                  {money(currentPrice(auction))}
-                </p>
-                <p className="mt-1 text-sm text-neutral-500">{bidCountOf(auction)} bids</p>
+              <div>
+                <p className="legend text-tick text-lume-faint">{auction.category?.name || 'Uncategorised'}</p>
+                <h1 className="mt-t2 text-title font-bold leading-tight text-lume sm:text-register">
+                  {auction.title}
+                </h1>
               </div>
 
-              {outbidMessage && (
-                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
-                  {outbidMessage}
+              {auction.description && (
+                <div className="border-t border-steel pt-t4">
+                  <h2 className="legend text-tick text-lume-faint">Description</h2>
+                  <p className="mt-t2 max-w-[68ch] whitespace-pre-line text-body leading-relaxed text-lume-dim">
+                    {auction.description}
+                  </p>
                 </div>
               )}
 
+              {auction.seller && (
+                <Link
+                  to={`/profile/${auction.seller.id}`}
+                  className="flex items-center gap-t3 border-t border-steel pt-t4 no-underline"
+                >
+                  <UserAvatar user={auction.seller} size="md" />
+                  <span className="min-w-0 flex-1">
+                    <span className="legend block text-tick text-lume-faint">Seller</span>
+                    <span className="block truncate text-body font-semibold text-lume">
+                      {auction.seller.username || 'Unknown'}
+                    </span>
+                  </span>
+                  {(auction.seller.rating?.count ?? 0) > 0 && (
+                    <span className="flex shrink-0 items-center gap-t2">
+                      <Stars score={auction.seller.rating.average} size="sm" />
+                      <span className="numeral text-micro text-lume-faint">
+                        {auction.seller.rating.average.toFixed(1)}
+                      </span>
+                    </span>
+                  )}
+                  <Icon name="chevron_right" className="shrink-0 text-[20px] text-lume-faint" />
+                </Link>
+              )}
+            </div>
+
+            {/* Sticky below the bezel on desktop; on mobile it sits in flow at
+                the top of the reading order, above the description. */}
+            <div className="lg:sticky lg:top-[4.5rem]">
+              <ControlPanel auction={auction} extendedAt={extendedAt} />
+
+              {outbidMessage && (
+                <Alert tone="caution" title="Outbid" className="mt-t3">
+                  Someone has taken the lead. Raise your bid before the clock runs out.
+                </Alert>
+              )}
+
               {isCompleted && isWinner && (
-                <div className="mt-4 space-y-4">
-                  <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-900">
+                <div className="mt-t3 space-y-t3">
+                  <Alert tone="live" title="Won">
                     {auction.buyNowPrice != null && Number(auction.currentBid) === Number(auction.buyNowPrice)
-                      ? 'You bought this item!'
-                      : 'You won this auction!'}
-                  </div>
+                      ? 'You bought this lot.'
+                      : 'You won this lot.'}
+                  </Alert>
                   <RateSellerForm
                     auctionId={auction.id}
                     sellerId={auction.seller?.id}
@@ -412,31 +509,12 @@ export default function AuctionDetailPage() {
                   />
                 </div>
               )}
-
-              {!isCompleted && isWinner && auction.status !== 'cancelled' && (
-                <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">
-                  You are the highest bidder!
-                </div>
-              )}
-
-              <BuyNowBox auction={auction} />
-              <BidBox auction={auction} />
-              <SellerCard seller={auction.seller} />
-
-              {auction.description && (
-                <div className="mt-6">
-                  <h2 className="text-xs font-bold uppercase tracking-wide text-neutral-500">Description</h2>
-                  <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-neutral-700">
-                    {auction.description}
-                  </p>
-                </div>
-              )}
             </div>
           </div>
 
           <section>
-            <h2 className="mb-4 font-headline text-xl font-extrabold text-neutral-900">Bid history</h2>
-            <BidHistory bids={auction.bids} />
+            <h2 className="legend mb-t3 border-b border-steel pb-t2 text-legend text-lume-dim">Bid tape</h2>
+            <BidTape bids={auction.bids} winnerId={auction.currentWinnerId} />
           </section>
         </>
       )}

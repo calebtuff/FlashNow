@@ -1,13 +1,17 @@
 import { Link } from 'react-router-dom';
+import EmptyState from '../components/EmptyState.jsx';
 
 export default function NotFoundPage() {
   return (
-    <section>
-      <h1 className="mb-2 text-2xl font-bold text-slate-900">Page not found</h1>
-      <p className="mb-3 text-slate-600">The route you visited does not exist yet.</p>
-      <Link to="/" className="text-blue-600 hover:underline">
-        Back to home
+    <EmptyState
+      icon="error"
+      titleAs="h1"
+      title="No reading"
+      body="That page does not exist, or it has moved."
+    >
+      <Link to="/" className="ctl-primary">
+        Back to the board
       </Link>
-    </section>
+    </EmptyState>
   );
 }

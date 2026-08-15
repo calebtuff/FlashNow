@@ -1,14 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import Icon from './Icon.jsx';
-import {
-  useNotificationMutations,
-  useNotificationsList,
-} from '../hooks/useNotifications.js';
-import {
-  formatNotificationTime,
-  notificationIcon,
-  notificationLink,
-} from '../utils/notifications.js';
+import { useNotificationMutations, useNotificationsList } from '../hooks/useNotifications.js';
+import { formatNotificationTime, notificationIcon, notificationLink } from '../utils/notifications.js';
 
 function NotificationRow({ item, onNavigate }) {
   const { markRead } = useNotificationMutations();
@@ -23,37 +16,25 @@ function NotificationRow({ item, onNavigate }) {
         // Still navigate even if mark-read fails
       }
     }
-    if (link) {
-      onNavigate(link);
-    }
+    if (link) onNavigate(link);
   }
 
   return (
     <button
       type="button"
       onClick={handleClick}
-      className={[
-        'flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-neutral-100',
-        item.read ? 'opacity-80' : 'bg-neutral-50',
-      ].join(' ')}
+      className="flex w-full items-start gap-t3 border-b border-steel px-t3 py-t3 text-left transition-colors duration-jump last:border-0 hover:bg-high"
     >
-      <span
-        className={[
-          'flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
-          item.read ? 'bg-neutral-200 text-neutral-600' : 'bg-neutral-900 text-white',
-        ].join(' ')}
-      >
-        <Icon name={icon} className="text-[18px]" />
-      </span>
+      {/* Unread is carried by a lit edge, not a background wash, so the row's
+          text contrast never changes with its state. */}
+      <span className={`mt-0.5 h-8 w-[3px] shrink-0 ${item.read ? 'bg-steel' : 'bg-caution'}`} aria-hidden />
+      <Icon name={icon} className={`mt-0.5 shrink-0 text-[18px] ${item.read ? 'text-lume-faint' : 'text-caution'}`} />
       <span className="min-w-0 flex-1">
-        <span className="flex items-start justify-between gap-2">
-          <span className={`text-sm ${item.read ? 'font-semibold' : 'font-bold'} text-neutral-900`}>
-            {item.title}
-          </span>
-          {!item.read && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-red-500" aria-hidden />}
+        <span className={`block text-body text-lume ${item.read ? 'font-medium' : 'font-semibold'}`}>
+          {item.title}
         </span>
-        <span className="mt-0.5 block text-xs leading-relaxed text-neutral-600">{item.body}</span>
-        <span className="mt-1 block text-[11px] font-medium text-neutral-400">
+        <span className="mt-0.5 block text-micro leading-relaxed text-lume-dim">{item.body}</span>
+        <span className="legend numeral mt-1.5 block text-tick text-lume-faint">
           {formatNotificationTime(item.createdAt)}
         </span>
       </span>
@@ -75,63 +56,57 @@ export default function NotificationPanel({ onClose }) {
   }
 
   return (
-    <div className="w-[min(100vw-2rem,22rem)] overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xl">
-      <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
-        <div>
-          <h2 className="font-headline text-base font-extrabold text-neutral-900">Notifications</h2>
-          {unreadCount > 0 && (
-            <p className="text-xs text-neutral-500">{unreadCount} unread</p>
-          )}
-        </div>
+    <div role="dialog" aria-label="Notifications" className="register w-[min(100vw-2rem,23rem)]">
+      <div className="flex items-center justify-between gap-t3 border-b border-steel px-t3 py-t3">
+        <h2 className="legend text-tick text-lume-faint">
+          Notices{' '}
+          {unreadCount > 0 && <span className="numeral text-caution">{unreadCount}</span>}
+        </h2>
         {unreadCount > 0 && (
           <button
             type="button"
             onClick={() => markAllRead.mutate()}
             disabled={markAllRead.isPending}
-            className="text-xs font-bold uppercase tracking-wide text-neutral-600 hover:text-neutral-900 disabled:opacity-50"
+            className="legend text-tick text-lume-faint transition-colors hover:text-lume disabled:opacity-40"
           >
-            Mark all read
+            Clear all
           </button>
         )}
       </div>
 
-      <div className="max-h-80 overflow-y-auto p-2">
+      <div className="max-h-80 overflow-y-auto">
         {isPending && (
-          <div className="space-y-2 p-2">
+          <div className="space-y-t2 p-t3" aria-busy="true" aria-label="Loading notices">
             {[1, 2, 3].map((k) => (
-              <div key={k} className="h-16 animate-pulse rounded-xl bg-neutral-100" />
+              <div key={k} className="h-14 animate-pulse bg-high" />
             ))}
           </div>
         )}
 
         {isError && (
-          <p className="px-3 py-6 text-center text-sm font-medium text-red-600">
-            Could not load notifications.
-          </p>
+          <div className="px-t3 py-t8 text-center">
+            <Icon name="error" className="text-[24px] text-hand" />
+            <p className="legend mt-t2 text-tick text-lume-dim">Could not load notices</p>
+          </div>
         )}
 
         {!isPending && !isError && notifications.length === 0 && (
-          <div className="px-3 py-10 text-center">
-            <Icon name="notifications_none" className="mx-auto text-[32px] text-neutral-300" />
-            <p className="mt-2 text-sm font-semibold text-neutral-700">No notifications yet</p>
-            <p className="mt-1 text-xs text-neutral-500">We&apos;ll notify you about bids and auctions here.</p>
+          <div className="px-t3 py-t8 text-center">
+            <div className="scale-rule mx-auto w-24 opacity-40" aria-hidden />
+            <p className="legend mt-t3 text-tick text-lume-faint">No notices</p>
           </div>
         )}
 
-        {!isPending && !isError && notifications.length > 0 && (
-          <div className="space-y-1">
-            {notifications.map((item) => (
-              <NotificationRow key={item.id} item={item} onNavigate={go} />
-            ))}
-          </div>
-        )}
+        {!isPending &&
+          !isError &&
+          notifications.map((item) => <NotificationRow key={item.id} item={item} onNavigate={go} />)}
       </div>
 
-      <div className="border-t border-neutral-100 px-4 py-3">
+      <div className="border-t border-steel p-t2">
         <Link
           to="/notifications"
           onClick={() => onClose?.()}
-          className="block text-center text-sm font-semibold text-neutral-900 no-underline hover:underline"
+          className="legend block py-2 text-center text-tick text-lume-dim no-underline transition-colors hover:text-lume"
         >
           View all
         </Link>

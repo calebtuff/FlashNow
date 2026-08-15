@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import AuctionForm from '../components/AuctionForm.jsx';
-import Icon from '../components/Icon.jsx';
+import BackLink from '../components/BackLink.jsx';
+import { useCategoryList } from '../hooks/useCategories.js';
 import { api } from '../services/api.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import {
@@ -15,21 +16,13 @@ import {
 function EditBlocked({ title, message, backTo }) {
   return (
     <div className="mx-auto max-w-2xl space-y-4">
-      <Link
-        to={backTo}
-        className="inline-flex items-center gap-1 text-sm font-semibold text-neutral-600 no-underline hover:text-neutral-900"
-      >
-        <Icon name="arrow_back" className="text-[18px]" />
-        Back to my auctions
-      </Link>
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6">
-        <h1 className="font-headline text-xl font-extrabold text-amber-950">{title}</h1>
-        <p className="mt-2 text-sm text-amber-900/90">{message}</p>
-        <Link
-          to={backTo}
-          className="mt-4 inline-flex rounded-xl bg-neutral-900 px-5 py-2.5 text-sm font-bold text-white no-underline"
-        >
-          Go to my auctions
+      <BackLink to={backTo}>Back to my lots</BackLink>
+      <div className="register p-t5">
+        <span className="absolute inset-x-0 top-0 h-[3px] bg-caution" aria-hidden />
+        <h1 className="legend text-legend text-caution">{title}</h1>
+        <p className="mt-t3 max-w-[60ch] text-body text-lume-dim">{message}</p>
+        <Link to={backTo} className="ctl-primary mt-t4">
+          Go to my lots
         </Link>
       </div>
     </div>
@@ -51,13 +44,9 @@ export default function EditAuctionPage() {
     enabled: Boolean(id),
   });
 
-  const categoriesQuery = useQuery({
-    queryKey: ['categories'],
-    queryFn: () => api.get('/categories'),
-  });
+  const { leaves, isPending: categoriesLoading } = useCategoryList();
 
   const auction = auctionQuery.data?.auction;
-  const categories = categoriesQuery.data?.categories ?? [];
   const bidCount = auction?._count?.bids ?? 0;
   const lockPricingFields = bidCount > 0;
 
@@ -133,8 +122,8 @@ export default function EditAuctionPage() {
 
   if (auctionQuery.isPending || authLoading || !form) {
     return (
-      <div className="mx-auto max-w-2xl">
-        <div className="h-96 animate-pulse rounded-2xl bg-neutral-200/80" />
+      <div className="mx-auto max-w-2xl" aria-busy="true" aria-label="Loading listing">
+        <div className="h-96 animate-pulse rounded-xl bg-sunken" />
       </div>
     );
   }
@@ -171,17 +160,11 @@ export default function EditAuctionPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      <div>
-        <Link
-          to="/my-auctions"
-          className="inline-flex items-center gap-1 text-sm font-semibold text-neutral-600 no-underline hover:text-neutral-900"
-        >
-          <Icon name="arrow_back" className="text-[18px]" />
-          Back to my auctions
-        </Link>
-        <h1 className="mt-3 font-headline text-3xl font-extrabold text-neutral-900">Edit listing</h1>
-        <p className="mt-1 text-sm text-neutral-600">
-          Update &ldquo;{auction.title}&rdquo; before it goes live or while it&apos;s still scheduled.
+      <div className="border-b border-steel pb-t4">
+        <BackLink to="/my-auctions">Back to my lots</BackLink>
+        <h1 className="legend mt-t3 text-legend text-lume-faint">Edit lot</h1>
+        <p className="mt-t2 max-w-[60ch] text-body text-lume-dim">
+          Updating &ldquo;{auction.title}&rdquo; before it opens.
         </p>
       </div>
 
@@ -193,8 +176,8 @@ export default function EditAuctionPage() {
         onRemoveImage={removeImage}
         showErrors={showErrors}
         errors={errors}
-        categories={categories}
-        categoriesLoading={categoriesQuery.isPending}
+        leaves={leaves}
+        categoriesLoading={categoriesLoading}
         lockPricingFields={lockPricingFields}
         submitError={updateAuction.isError ? updateAuction.error?.message : ''}
         isPending={updateAuction.isPending}

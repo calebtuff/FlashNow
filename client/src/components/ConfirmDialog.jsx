@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 export default function ConfirmDialog({
   open,
@@ -11,58 +11,95 @@ export default function ConfirmDialog({
   isPending = false,
   destructive = false,
 }) {
+  const cancelRef = useRef(null);
+  const restoreRef = useRef(null);
+  const panelRef = useRef(null);
+
   useEffect(() => {
     if (!open) return undefined;
 
+    restoreRef.current = document.activeElement;
+    cancelRef.current?.focus();
+
     function handleKeyDown(e) {
-      if (e.key === 'Escape' && !isPending) onClose?.();
+      if (e.key === 'Escape' && !isPending) {
+        onClose?.();
+        return;
+      }
+
+      // Focus trap. `aria-modal` tells a screen reader the rest of the page is
+      // inert, but it does nothing for the Tab key: without this, tabbing out
+      // of the last button walks into the page behind the overlay while the
+      // dialog is still up.
+      if (e.key !== 'Tab' || !panelRef.current) return;
+
+      const focusable = panelRef.current.querySelectorAll(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
 
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      restoreRef.current?.focus?.();
+    };
   }, [open, isPending, onClose]);
 
   if (!open) return null;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center p-t4"
       role="presentation"
       onClick={() => {
         if (!isPending) onClose?.();
       }}
     >
-      <div className="absolute inset-0 bg-neutral-900/40 backdrop-blur-[2px]" aria-hidden />
+      <div className="absolute inset-0 bg-dial/85" aria-hidden />
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
-        className="relative w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl"
+        className="register flyback relative w-full max-w-md p-t5"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id="confirm-dialog-title" className="font-headline text-lg font-extrabold text-neutral-900">
+        {/* A destructive confirmation gets the red edge; the message stays
+            lume so it is never a wall of coloured text. */}
+        {destructive && <span className="absolute inset-x-0 top-0 h-[3px] bg-hand" aria-hidden />}
+
+        <h2 id="confirm-dialog-title" className="legend text-legend text-lume">
           {title}
         </h2>
-        {message && <p className="mt-2 text-sm leading-relaxed text-neutral-600">{message}</p>}
-        <div className="mt-6 flex flex-wrap justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isPending}
-            className="rounded-xl border border-neutral-300 px-4 py-2.5 text-sm font-semibold text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
-          >
+        {message && <p className="mt-t3 text-body leading-relaxed text-lume-dim">{message}</p>}
+
+        <div className="mt-t5 flex flex-wrap justify-end gap-t2">
+          <button ref={cancelRef} type="button" onClick={onClose} disabled={isPending} className="ctl-ghost">
             {cancelLabel}
           </button>
           <button
             type="button"
             onClick={onConfirm}
             disabled={isPending}
-            className={[
-              'rounded-xl px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50',
-              destructive ? 'bg-red-600 hover:bg-red-700' : 'bg-neutral-900 hover:bg-neutral-800',
-            ].join(' ')}
+            className={destructive ? 'ctl-danger' : 'ctl-primary'}
           >
-            {isPending ? 'Working…' : confirmLabel}
+            {isPending ? 'Working' : confirmLabel}
           </button>
         </div>
       </div>

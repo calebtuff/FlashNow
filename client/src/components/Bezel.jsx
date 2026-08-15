@@ -9,7 +9,7 @@ import useDismissable from '../hooks/useDismissable.js';
 import { useCategoryList } from '../hooks/useCategories.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { api } from '../services/api.js';
-import { isTerminal, money } from '../utils/auction.js';
+import { auctionTimeMeta, money } from '../utils/auction.js';
 
 /** Reads the board query already in cache; it never fires a request of its own. */
 function useLiveCount() {
@@ -18,7 +18,18 @@ function useLiveCount() {
     queryFn: () => api.get('/auctions'),
     staleTime: 15_000,
   });
-  return (data?.auctions ?? []).filter((a) => a.status === 'live' && !isTerminal(a)).length;
+
+  // The board returns a capped list, so counting rows undercounts once there
+  // are more running lots than it lists. Below the cap the rows are preferred:
+  // they are patched by the live socket, so the count falls the moment a lot
+  // closes rather than waiting for the next fetch.
+  if (data?.counts?.liveTruncated) return data.counts.live;
+
+  // Counted off the clock, the same way the board files a lot into "Running
+  // now", so the two can never print different numbers. Counting `status`
+  // instead missed a lot in the gap between it opening and the server's
+  // minutely cron promoting it.
+  return (data?.auctions ?? []).filter((a) => auctionTimeMeta(a).kind === 'live').length;
 }
 
 function navClass({ isActive }) {

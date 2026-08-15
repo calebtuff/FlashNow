@@ -2,341 +2,325 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import Icon from '../components/Icon.jsx';
-import CountdownStrip from '../components/CountdownStrip.jsx';
-import AuctionCard from '../components/AuctionCard.jsx';
-import FavoriteButton from '../components/FavoriteButton.jsx';
+import RegisterStack, { RegisterStackSkeleton } from '../components/RegisterStack.jsx';
+import LiveTape from '../components/LiveTape.jsx';
+import FilterPills from '../components/FilterPills.jsx';
+import EmptyState from '../components/EmptyState.jsx';
+import Alert from '../components/Alert.jsx';
 import { api } from '../services/api.js';
-import { bidCountOf, currentPrice, money } from '../utils/auction.js';
+import { useAuth } from '../context/AuthContext.jsx';
+import useNow from '../hooks/useNow.js';
+import {
+  CRITICAL_MS,
+  auctionTimeMeta,
+  currentPrice,
+  formatClock,
+  money,
+  remainingMs,
+} from '../utils/auction.js';
 
-const PILL_FILTERS = [
-  { key: 'all', label: 'All', match: () => true },
-  {
-    key: 'watches',
-    label: 'Watches',
-    match: (a) =>
-      /watch|omega|moonwatch/i.test(a.title) ||
-      (a.category?.name && /watch/i.test(a.category.name)) ||
-      (a.category?.slug && /watch/i.test(a.category.slug)),
-  },
-  {
-    key: 'sneakers',
-    label: 'Sneakers',
-    match: (a) =>
-      /sneaker|jordan|air max|yeezy/i.test(a.title) ||
-      (a.category?.name && /sneaker|shoe|footwear/i.test(a.category.name)) ||
-      (a.category?.slug && /sneaker|shoe/i.test(a.category.slug)),
-  },
-  {
-    key: 'bags',
-    label: 'Bags',
-    match: (a) =>
-      /bag|birkin|hermès|hermes|tote/i.test(a.title) ||
-      (a.category?.name && /bag|leather/i.test(a.category.name)),
-  },
-  {
-    key: 'art',
-    label: 'Art',
-    match: (a) =>
-      /art|canvas|painting|acrylic/i.test(a.title) ||
-      (a.category?.name && /art/i.test(a.category.name)),
-  },
-  {
-    key: 'cameras',
-    label: 'Cameras',
-    match: (a) =>
-      /camera|leica|canon|nikon|lens/i.test(a.title) ||
-      (a.category?.name && /camera|photo/i.test(a.category.name)),
-  },
-  {
-    key: 'vintage',
-    label: 'Vintage',
-    match: (a) =>
-      /vintage|retro|classic|console/i.test(a.title) ||
-      (a.category?.name && /vintage|collect/i.test(a.category.name)),
-  },
-  {
-    key: 'music',
-    label: 'Music',
-    match: (a) =>
-      /vinyl|record|music|floyd|album/i.test(a.title) ||
-      (a.category?.name && /music/i.test(a.category.name)),
-  },
+const SORTS = [
+  { key: 'closing', label: 'Closing' },
+  { key: 'priceDesc', label: 'Price' },
+  { key: 'bids', label: 'Bids' },
 ];
 
-function FeaturedFallback() {
-  const [endIso] = useState(() => new Date(Date.now() + 23 * 60000 + 47000).toISOString());
+/** A lot with no readable end time sorts last rather than to the front. */
+function endsAtMs(a) {
+  const t = a?.endsAt ? new Date(a.endsAt).getTime() : Number.NaN;
+  return Number.isNaN(t) ? Infinity : t;
+}
+
+/**
+ * A ruled section head. The count is the reading; the name is the legend.
+ */
+function Rule({ label, count, children }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-lg">
-      <div className="relative aspect-[4/3] bg-neutral-200">
-        <img
-          src="https://picsum.photos/seed/flashnow-featured/800/600"
-          alt=""
-          className="h-full w-full object-cover"
-        />
-        <span className="absolute left-3 top-3 rounded bg-red-600 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-white">
-          Ending now
-        </span>
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent px-4 pb-4 pt-16 text-center">
-          <p className="text-xs font-semibold uppercase tracking-widest text-white/80">Ends in</p>
-          <div className="mt-1 flex justify-center">
-            <CountdownStrip endsAt={endIso} />
-          </div>
+    <div className="mb-t3 flex items-end justify-between gap-t4 border-b border-steel pb-t2">
+      <h2 className="legend flex items-baseline gap-t2 text-legend text-lume-dim">
+        {label}
+        <span className="numeral text-body text-lume-faint">{String(count).padStart(2, '0')}</span>
+      </h2>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * A single line stating the mechanism, shown only to signed-out visitors.
+ *
+ * This replaces the previous marketing stack (hero, "How it works", "Why
+ * FlashNow"), which a returning bidder had to scroll past on every visit to
+ * reach the lots. A first-time visitor still learns what this is; the board
+ * itself is the demonstration.
+ */
+function MechanismStrip() {
+  return (
+    <div className="register mb-t6 flex flex-col gap-t3 p-t4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-start gap-t3">
+        <span className="mt-1 h-8 w-[3px] shrink-0 bg-hand" aria-hidden />
+        <div>
+          <p className="text-title font-bold leading-snug text-lume">
+            Auctions here run five to thirty minutes.
+          </p>
+          <p className="mt-1 max-w-[52ch] text-body text-lume-dim">
+            A lot is an event you attend, not a listing you revisit. Funds are held while you lead and
+            released the moment you are outbid.
+          </p>
         </div>
       </div>
-      <div className="p-5">
-        <h3 className="font-display text-xl font-semibold tracking-tight text-neutral-900">Tiffany &amp; Co. Solitaire</h3>
-        <p className="mt-4 text-xs font-bold uppercase tracking-wide text-neutral-500">Current bid</p>
-        <p className="font-display text-2xl font-bold tracking-tight text-neutral-900">$9,200</p>
-        <p className="mt-1 text-sm text-neutral-500">22 bids</p>
+      <div className="flex shrink-0 gap-t2">
+        <Link to="/register" className="ctl-primary">
+          Create account
+        </Link>
+        <Link to="/login" className="ctl-ghost">
+          Sign in
+        </Link>
       </div>
     </div>
   );
 }
 
+/** One sub-dial: a small tracked legend over a large tabular reading. */
+function Reading({ label, value, tone = 'text-lume' }) {
+  return (
+    <div className="min-w-0">
+      <p className="legend text-tick text-lume-faint">{label}</p>
+      <p className={`numeral mt-1 truncate text-title font-bold ${tone}`}>{value}</p>
+    </div>
+  );
+}
+
+/**
+ * The board's own readings, clustered above the lots they describe.
+ *
+ * An instrument gets its density from the small dials around the main one, and
+ * the board used to state nothing about itself but a row count. Every figure
+ * here is derived from data the page already holds, so the strip costs no
+ * request, and the two that move are driven by the same shared clock as every
+ * countdown beneath them.
+ *
+ * The shape is fixed at four readings even when one has nothing to report, so
+ * the strip does not change width as lots open and close under it.
+ */
+function BoardSummary({ running, opening, liveTotal, now }) {
+  if (running.length === 0 && opening.length === 0) return null;
+
+  const closing = running.filter((a) => {
+    const ms = remainingMs(a, now);
+    return ms != null && ms > 0 && ms <= CRITICAL_MS;
+  }).length;
+
+  // Summed over the rows actually listed, which is what "on the board" says.
+  // Above the server's cap that is a subset of everything running, and the
+  // line under the stack already states that the board is showing a subset.
+  const value = running.reduce((sum, a) => sum + currentPrice(a), 0);
+
+  const nextMs = opening.length ? new Date(opening[0].startsAt ?? 0).getTime() - now : null;
+  let nextOpens = '--';
+  if (nextMs != null) nextOpens = nextMs > 0 ? formatClock(nextMs) : 'Now';
+
+  return (
+    // No bottom margin: this sits inside the board's own `space-y-t8` rhythm.
+    <div className="register grid grid-cols-2 gap-x-t6 gap-y-t4 p-t4 sm:grid-cols-4">
+      <Reading label="Running" value={String(liveTotal).padStart(2, '0')} />
+
+      {/* A count of lots inside the anti-snipe window is a state, not
+          emphasis, so it takes the hand lamp only while there is one in it. */}
+      <Reading
+        label="Closing under 60s"
+        value={String(closing).padStart(2, '0')}
+        tone={closing > 0 ? 'text-hand' : 'text-lume'}
+      />
+      <Reading label="On the board" value={money(value)} />
+      {/* Counting toward an opening, so it stays lume: a lot about to open is
+          not urgent, whatever its clock says. */}
+      <Reading label="Next opens" value={nextOpens} />
+    </div>
+  );
+}
+
+/** The viewer's own stake, read off the board rather than a new endpoint. */
+function PositionStrip({ leadingCount, held }) {
+  if (leadingCount === 0 && !held) return null;
+
+  return (
+    <div className="mb-t6 flex flex-wrap items-center gap-x-t6 gap-y-t2 border-b border-steel pb-t3">
+      <span className="legend flex items-baseline gap-t2 text-tick text-lume-faint">
+        Leading
+        <span className="numeral text-title font-bold text-radium">
+          {String(leadingCount).padStart(2, '0')}
+        </span>
+      </span>
+      {typeof held === 'number' && held > 0 && (
+        <span className="legend flex items-baseline gap-t2 text-tick text-lume-faint">
+          Held on bids
+          <span className="numeral text-title font-bold text-caution">{money(held)}</span>
+        </span>
+      )}
+      <Link
+        to="/my-bids"
+        className="legend ml-auto text-tick text-lume-faint no-underline transition-colors hover:text-lume"
+      >
+        All my bids
+      </Link>
+    </div>
+  );
+}
+
 export default function HomePage() {
-  const [pill, setPill] = useState('all');
-  const [sort, setSort] = useState('ending');
+  const [sort, setSort] = useState('closing');
+  const { isAuthenticated, userId } = useAuth();
+
+  // The board re-sorts as lots drain, so it depends on the shared clock.
+  const now = useNow();
 
   const { data, isPending, isError, error } = useQuery({
     queryKey: ['auctions'],
     queryFn: () => api.get('/auctions'),
+    staleTime: 15_000,
   });
 
-  const filteredSorted = useMemo(() => {
-    const listRaw = data?.auctions ?? [];
-    const matcher = PILL_FILTERS.find((p) => p.key === pill)?.match ?? (() => true);
-    let list = listRaw.filter((a) => matcher(a));
-    list = [...list];
-    if (sort === 'ending') {
-      list.sort((a, b) => new Date(a.endsAt).getTime() - new Date(b.endsAt).getTime());
-    } else if (sort === 'priceDesc') {
-      list.sort((a, b) => currentPrice(b) - currentPrice(a));
-    } else if (sort === 'priceAsc') {
-      list.sort((a, b) => currentPrice(a) - currentPrice(b));
-    }
-    return list;
-  }, [data?.auctions, pill, sort]);
+  const walletQuery = useQuery({
+    queryKey: ['wallet', userId],
+    queryFn: () => api.get('/wallet'),
+    enabled: isAuthenticated,
+  });
+  const held = walletQuery.data?.wallet?.heldBalance;
 
-  const featured = filteredSorted[0] ?? null;
+  const { running, opening, closed, leadingCount } = useMemo(() => {
+    const all = data?.auctions ?? [];
+
+    const live = [];
+    const next = [];
+    const over = [];
+
+    // Bucketed by the clock, not by the stored status, and deliberately by the
+    // same helper a register uses to decide what it prints.
+    //
+    // Status is a fact about the last fetch. A lot opens when the server's cron
+    // promotes it, which nothing tells the browser about: there is a socket
+    // event for a bid and one for a close, but none for an opening. Filing by
+    // status therefore left an open lot sitting under "Opens next" while the
+    // row inside it, which has always read the clock directly, counted down to
+    // its close. One derivation for both means they cannot disagree, and since
+    // `now` is a dependency here the lot changes section on the tick it opens.
+    for (const a of all) {
+      const { kind } = auctionTimeMeta(a, now);
+      if (kind === 'ended') over.push(a);
+      else if (kind === 'scheduled') next.push(a);
+      else if (kind === 'live') live.push(a);
+      // 'unknown' is an entry with no lot behind it; there is nothing to draw.
+    }
+
+    const bySort = (x, y) => {
+      if (sort === 'priceDesc') return currentPrice(y) - currentPrice(x);
+      if (sort === 'bids') return (y._count?.bids ?? 0) - (x._count?.bids ?? 0);
+      // Default: whatever closes first is the thing you can still act on.
+      //
+      // Compared on the end time itself rather than on time remaining. The two
+      // orderings are identical, because a shared `now` subtracts out of both
+      // sides, but time remaining made the comparison a function of the tick,
+      // so the board re-sorted every second and rows could swap places under
+      // the cursor as someone reached for one.
+      return endsAtMs(x) - endsAtMs(y);
+    };
+
+    return {
+      running: [...live].sort(bySort),
+      opening: [...next].sort(
+        (x, y) => new Date(x.startsAt ?? 0).getTime() - new Date(y.startsAt ?? 0).getTime()
+      ),
+      // The server caps this bucket too, but the cap has to be reapplied here:
+      // a lot that closes mid-session is patched to a terminal status by the
+      // live socket and re-buckets into this list without a refetch, so over a
+      // long session the tail would otherwise keep growing.
+      closed: [...over]
+        .sort((x, y) => new Date(y.endsAt ?? 0).getTime() - new Date(x.endsAt ?? 0).getTime())
+        .slice(0, 5),
+      leadingCount: userId ? live.filter((a) => a.currentWinnerId === userId).length : 0,
+    };
+  }, [data?.auctions, sort, now, userId]);
+
+  // Below the server's cap the rows are the truth, and they stay accurate as
+  // the live socket patches lots closed. Above it, only the server knows.
+  const liveTruncated = Boolean(data?.counts?.liveTruncated);
+  const liveTotal = liveTruncated ? data.counts.live : running.length;
 
   return (
-    <div className="space-y-10">
-      <section className="grid gap-10 lg:grid-cols-2 lg:items-center">
-        <div>
-          <p className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-1 text-xs font-bold uppercase tracking-wide text-neutral-700 shadow-sm">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
-            Live auctions now
-          </p>
-          <h1 className="mt-5 font-headline text-4xl font-extrabold leading-tight tracking-tight text-neutral-900 sm:text-5xl lg:text-[3.25rem]">
-            Live auctions ending soon.
-          </h1>
-          <p className="mt-4 max-w-xl text-base leading-relaxed text-neutral-600">
-            Authentic pieces, verified sellers, and fast payouts. Browse watches, sneakers, art, and more — all in
-            real time.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link
-              to={featured ? `/auctions/${featured.id}` : '/'}
-              className="inline-flex items-center gap-2 rounded-xl bg-neutral-900 px-6 py-3 text-sm font-bold text-white no-underline shadow-sm transition-colors hover:bg-neutral-800"
-            >
-              Start bidding
-              <Icon name="arrow_forward" className="text-[20px]" />
-            </Link>
-            <Link
-              to="/sell"
-              className="inline-flex items-center gap-2 rounded-xl border-2 border-neutral-900 bg-transparent px-6 py-3 text-sm font-bold text-neutral-900 no-underline transition-colors hover:bg-white/50"
-            >
-              Sell something
-            </Link>
-          </div>
-          <dl className="mt-10 grid max-w-lg grid-cols-2 gap-4 border-t border-neutral-300/60 pt-8">
-            <div>
-              <dt className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Trust</dt>
-              <dd className="mt-1 font-headline text-lg font-extrabold text-neutral-900">98.7%</dd>
-              <dd className="text-xs text-neutral-500">authenticated</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Payout</dt>
-              <dd className="mt-1 font-headline text-lg font-extrabold text-neutral-900">&lt; 24h</dd>
-              <dd className="text-xs text-neutral-500">avg</dd>
-            </div>
-          </dl>
-        </div>
-
-        <div>
-          {isPending ? (
-            <div className="h-[420px] animate-pulse rounded-2xl bg-neutral-200/80" />
-          ) : featured ? (
-            <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-lg">
-              <div className="relative aspect-[4/3] bg-neutral-100">
-                <img
-                  src={
-                    Array.isArray(featured.images) && featured.images[0]
-                      ? featured.images[0]
-                      : `https://picsum.photos/seed/${featured.id}/800/600`
-                  }
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
-                <span className="absolute left-3 top-3 rounded bg-red-600 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-white">
-                  Ending now
-                </span>
-                <FavoriteButton auctionId={featured.id} variant="featured" />
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent px-4 pb-4 pt-16 text-center">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-white/80">Ends in</p>
-                  <div className="mt-1 flex justify-center">
-                    <CountdownStrip endsAt={featured.endsAt} />
-                  </div>
-                </div>
-              </div>
-              <div className="p-5">
-                <h2 className="font-display text-xl font-semibold tracking-tight text-neutral-900">{featured.title}</h2>
-                <p className="mt-4 text-xs font-bold uppercase tracking-wide text-neutral-500">Current bid</p>
-                <p className="font-display text-2xl font-bold tracking-tight text-neutral-900">{money(currentPrice(featured))}</p>
-                <p className="mt-1 text-sm text-neutral-500">{bidCountOf(featured)} bids</p>
-                <Link
-                  to={`/auctions/${featured.id}`}
-                  className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-neutral-900 py-3 text-sm font-bold text-white no-underline hover:bg-neutral-800"
-                >
-                  View auction
-                  <Icon name="arrow_forward" className="text-[18px]" />
-                </Link>
-              </div>
-            </div>
-          ) : (
-            <FeaturedFallback />
-          )}
-        </div>
-      </section>
+    <div>
+      {!isAuthenticated && <MechanismStrip />}
+      {isAuthenticated && <PositionStrip leadingCount={leadingCount} held={held} />}
 
       {isError && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
-          {error?.message || 'Could not load auctions. Start the API or check your connection.'}
-        </div>
+        <Alert title="Board offline" className="mb-t6">
+          {error?.message || 'Could not reach the auction service. Check your connection.'}
+        </Alert>
       )}
 
-      <section className="flex flex-wrap gap-2">
-        {PILL_FILTERS.map((p) => (
-          <button
-            key={p.key}
-            type="button"
-            onClick={() => setPill(p.key)}
-            className={[
-              'rounded-full border px-4 py-2 text-sm font-semibold transition-colors',
-              pill === p.key
-                ? 'border-neutral-900 bg-neutral-900 text-white'
-                : 'border-neutral-300 bg-white/70 text-neutral-800 hover:bg-white',
-            ].join(' ')}
-          >
-            {p.label}
-          </button>
-        ))}
-      </section>
+      {isPending ? (
+        <RegisterStackSkeleton label="Loading the board" />
+      ) : (
+        <div className="space-y-t8">
+          <BoardSummary running={running} opening={opening} liveTotal={liveTotal} now={now} />
+          <LiveTape />
 
-      <section>
-        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <h2 className="font-headline text-2xl font-extrabold text-neutral-900">Ending soonest</h2>
-          <label className="flex items-center gap-2 text-sm font-semibold text-neutral-700">
-            <span className="text-neutral-500">Sort:</span>
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value)}
-              className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-semibold text-neutral-900 shadow-sm outline-none focus:border-neutral-900"
-            >
-              <option value="ending">Ending soon</option>
-              <option value="priceDesc">Price: high to low</option>
-              <option value="priceAsc">Price: low to high</option>
-            </select>
-          </label>
+          <section>
+            {/* The heading states the real number of running lots, which is
+                also what the bezel prints, so the two never disagree. When the
+                board is capped, the line beneath says what is actually listed. */}
+            <Rule label="Running now" count={liveTotal}>
+              <FilterPills options={SORTS} value={sort} onChange={setSort} label="Sort the board" />
+            </Rule>
+
+            {running.length === 0 ? (
+              <EmptyState
+                icon="timer_off"
+                title="Nothing running"
+                body="No lot is live right now. Scheduled lots appear below as they open."
+              >
+                <Link to="/sell" className="ctl-primary">
+                  <Icon name="add" className="text-[18px]" />
+                  List a lot
+                </Link>
+              </EmptyState>
+            ) : (
+              <RegisterStack auctions={running} />
+            )}
+
+            {liveTruncated && (
+              <p className="mt-t3 text-body text-lume-dim">
+                Listing the {running.length} closing soonest.{' '}
+                <Link to="/search?status=live" className="text-lume">
+                  See all {liveTotal} running lots
+                </Link>
+                .
+              </p>
+            )}
+          </section>
+
+          {opening.length > 0 && (
+            <section>
+              <Rule label="Opens next" count={opening.length} />
+              <RegisterStack auctions={opening} />
+            </section>
+          )}
+
+          {closed.length > 0 && (
+            <section>
+              <Rule label="Just closed" count={closed.length} />
+              {/* No dimming. This stack used to rest at 60% and return to full
+                  on hover, which does not exist on touch, so on a phone the
+                  section was permanently faded with no way to restore it, and
+                  its tick legends fell under the contrast floor at that
+                  opacity. A closed lot already reads as spent without help: an
+                  unlit lamp, a drained arc, and a wall-clock time where the
+                  running rows carry a countdown. */}
+              <RegisterStack auctions={closed} />
+            </section>
+          )}
         </div>
-
-        {isPending ? (
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {[1, 2, 3, 4, 5, 6].map((k) => (
-              <div key={k} className="aspect-[3/4] animate-pulse rounded-2xl bg-neutral-200/80" />
-            ))}
-          </div>
-        ) : filteredSorted.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-neutral-300 bg-white/60 px-6 py-16 text-center">
-            <p className="font-headline text-lg font-bold text-neutral-800">No auctions match this filter</p>
-            <p className="mt-2 text-sm text-neutral-600">Try another category or clear filters.</p>
-            <button
-              type="button"
-              onClick={() => setPill('all')}
-              className="mt-6 rounded-xl bg-neutral-900 px-5 py-2.5 text-sm font-bold text-white"
-            >
-              Show all
-            </button>
-          </div>
-        ) : (
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredSorted.map((a) => (
-              <AuctionCard key={a.id} a={a} />
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="rounded-3xl border border-neutral-200 bg-white p-8 sm:p-10">
-        <h2 className="font-headline text-2xl font-extrabold text-neutral-900">How it works</h2>
-        <p className="mt-1 text-sm text-neutral-600">Win authentic items in three simple steps.</p>
-        <div className="mt-8 grid gap-8 sm:grid-cols-3">
-          {[
-            {
-              icon: 'search',
-              title: 'Discover',
-              text: 'Browse live auctions across watches, sneakers, art, and more — all verified.',
-            },
-            {
-              icon: 'gavel',
-              title: 'Bid in real time',
-              text: 'Place your bid and watch the countdown. Get outbid? Jump back in instantly.',
-            },
-            {
-              icon: 'local_shipping',
-              title: 'Win & get it fast',
-              text: 'Win, pay securely, and receive your item quickly with full buyer protection.',
-            },
-          ].map((step, i) => (
-            <div key={step.title} className="flex flex-col">
-              <div className="flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-neutral-900 text-white">
-                  <Icon name={step.icon} className="text-[20px]" />
-                </span>
-                <span className="font-display text-sm font-bold uppercase tracking-wide text-neutral-400">
-                  Step {i + 1}
-                </span>
-              </div>
-              <h3 className="mt-4 font-display text-lg font-semibold tracking-tight text-neutral-900">{step.title}</h3>
-              <p className="mt-1 text-sm leading-relaxed text-neutral-600">{step.text}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <h2 className="font-headline text-2xl font-extrabold text-neutral-900">Why FlashNow</h2>
-        <p className="mt-1 text-sm text-neutral-600">Built for trust, speed, and authenticity.</p>
-        <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            { icon: 'verified', title: 'Verified authenticity', text: 'Every seller and item is vetted before going live.' },
-            { icon: 'shield', title: 'Buyer protection', text: 'Your payment is protected from bid to delivery.' },
-            { icon: 'bolt', title: 'Real-time bidding', text: 'Live countdowns and instant updates as bids land.' },
-            { icon: 'payments', title: 'Fast payouts', text: 'Sellers get paid quickly — typically within 24 hours.' },
-          ].map((f) => (
-            <div
-              key={f.title}
-              className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
-            >
-              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-neutral-100 text-neutral-900">
-                <Icon name={f.icon} className="text-[22px]" />
-              </span>
-              <h3 className="mt-4 font-display text-base font-semibold tracking-tight text-neutral-900">{f.title}</h3>
-              <p className="mt-1 text-sm leading-relaxed text-neutral-600">{f.text}</p>
-            </div>
-          ))}
-        </div>
-      </section>
+      )}
     </div>
   );
 }

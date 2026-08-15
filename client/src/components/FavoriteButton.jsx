@@ -3,15 +3,15 @@ import Icon from './Icon.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useFavoriteIds, useToggleFavorite } from '../hooks/useFavorites.js';
 
+// z-10 keeps the control above the register's full-row click overlay, so
+// saving a lot never navigates to it by accident.
 const VARIANTS = {
-  card: 'absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-white text-neutral-700 shadow-sm transition-colors hover:text-red-500 disabled:opacity-50',
-  featured:
-    'absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full border border-white/35 bg-white/15 text-white shadow-sm backdrop-blur-sm transition-colors hover:bg-white/25 disabled:opacity-50',
-  detail:
-    'absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-neutral-700 shadow-md transition-colors hover:text-red-500 disabled:opacity-50',
+  register:
+    'absolute -right-1.5 -top-1.5 z-10 h-7 w-7 border border-steel bg-dial text-lume-faint hover:text-lume',
+  dial: 'absolute right-t3 top-t3 z-10 h-10 w-10 border border-edge bg-dial/85 text-lume-dim backdrop-blur-sm hover:text-lume',
 };
 
-export default function FavoriteButton({ auctionId, variant = 'card', className = '' }) {
+export default function FavoriteButton({ auctionId, variant = 'register', className = '' }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAuthenticated } = useAuth();
@@ -34,21 +34,26 @@ export default function FavoriteButton({ auctionId, variant = 'card', className 
     toggle.mutate({ auctionId, favorited });
   }
 
-  const iconClass =
-    variant === 'featured'
-      ? ['text-[22px] drop-shadow-sm', favorited ? 'icon-filled text-red-300' : ''].join(' ')
-      : ['text-[18px]', favorited ? 'icon-filled text-red-500' : ''].join(' ');
-
   return (
     <button
       type="button"
       onClick={handleClick}
       disabled={pending}
-      aria-label={favorited ? 'Remove from saved' : 'Save auction'}
+      aria-label={favorited ? 'Remove from saved' : 'Save lot'}
       aria-pressed={favorited}
-      className={[VARIANTS[variant] ?? VARIANTS.card, className].join(' ')}
+      className={[
+        'flex items-center justify-center rounded-sm transition-colors duration-jump ease-jump disabled:opacity-40',
+        VARIANTS[variant] ?? VARIANTS.register,
+        favorited ? 'text-caution' : '',
+        className,
+      ].join(' ')}
     >
-      <Icon name="favorite" className={iconClass} />
+      {/* Saving a lot is a watch instruction, not affection: a bookmark reads
+          correctly where a heart would import the wrong vocabulary. */}
+      <Icon
+        name="bookmark"
+        className={[variant === 'dial' ? 'text-[20px]' : 'text-[15px]', favorited ? 'icon-filled' : ''].join(' ')}
+      />
     </button>
   );
 }

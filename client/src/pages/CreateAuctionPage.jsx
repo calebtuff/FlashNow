@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import AuctionForm from '../components/AuctionForm.jsx';
-import Icon from '../components/Icon.jsx';
+import BackLink from '../components/BackLink.jsx';
+import { useCategoryList } from '../hooks/useCategories.js';
 import { api } from '../services/api.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import {
@@ -19,11 +20,7 @@ export default function CreateAuctionPage() {
   const [form, setForm] = useState(EMPTY_AUCTION_FORM);
   const [showErrors, setShowErrors] = useState(false);
 
-  const categoriesQuery = useQuery({
-    queryKey: ['categories'],
-    queryFn: () => api.get('/categories'),
-  });
-  const categories = categoriesQuery.data?.categories ?? [];
+  const { leaves, isPending: categoriesLoading } = useCategoryList();
 
   const errors = auctionFormFieldErrors(form);
   const isValid = Object.keys(errors).length === 0;
@@ -71,18 +68,13 @@ export default function CreateAuctionPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <div>
-        <Link
-          to="/"
-          className="inline-flex items-center gap-1 text-sm font-semibold text-neutral-600 no-underline hover:text-neutral-900"
-        >
-          <Icon name="arrow_back" className="text-[18px]" />
-          Back to auctions
-        </Link>
-        <h1 className="mt-3 font-headline text-3xl font-extrabold text-neutral-900">List an item</h1>
-        <p className="mt-1 text-sm text-neutral-600">
-          Create a scheduled auction. It goes live at the start time and runs for the duration you pick.
+    <div className="mx-auto max-w-2xl space-y-t6">
+      <div className="border-b border-steel pb-t4">
+        <BackLink to="/">Back to the board</BackLink>
+        <h1 className="legend mt-t3 text-legend text-lume-faint">List a lot</h1>
+        <p className="mt-t2 max-w-[60ch] text-body text-lume-dim">
+          It opens at the time you set and runs for the duration you pick. A bid in the final minute
+          extends it by 60 seconds.
         </p>
       </div>
 
@@ -94,8 +86,8 @@ export default function CreateAuctionPage() {
         onRemoveImage={removeImage}
         showErrors={showErrors}
         errors={errors}
-        categories={categories}
-        categoriesLoading={categoriesQuery.isPending}
+        leaves={leaves}
+        categoriesLoading={categoriesLoading}
         submitError={createAuction.isError ? createAuction.error?.message : ''}
         isPending={createAuction.isPending}
         submitLabel="Create auction"

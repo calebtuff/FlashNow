@@ -1,12 +1,35 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Icon from './Icon.jsx';
-import { DURATION_OPTIONS } from '../utils/auctionForm.js';
+import Alert from './Alert.jsx';
+import CategoryCombobox from './CategoryCombobox.jsx';
+import { DURATION_OPTIONS, suggestCategory } from '../utils/auctionForm.js';
 
-const labelClass = 'block text-xs font-bold uppercase tracking-wide text-neutral-500';
-const inputClass =
-  'mt-1.5 w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm font-medium text-neutral-900 outline-none transition-colors focus:border-neutral-900 disabled:bg-neutral-100 disabled:text-neutral-500';
-const errorClass = 'mt-1 text-xs font-semibold text-red-600';
+/** A grouped block of the listing sheet, ruled off like a form on a clipboard. */
+function Group({ step, title, hint, children }) {
+  return (
+    <section className="border-t border-steel pt-t4 first:border-0 first:pt-0">
+      <div className="mb-t3 flex items-baseline gap-t3">
+        <span className="legend numeral text-tick text-lume-faint">{String(step).padStart(2, '0')}</span>
+        <div>
+          <h2 className="legend text-legend text-lume-dim">{title}</h2>
+          {hint && <p className="mt-1 text-micro text-lume-faint">{hint}</p>}
+        </div>
+      </div>
+      <div className="space-y-t4 pl-0 sm:pl-8">{children}</div>
+    </section>
+  );
+}
 
+/**
+ * The listing sheet.
+ *
+ * The previous version was eight ungrouped fields in one scroll, which read as
+ * a settings page rather than as the act of putting something up for sale.
+ * Grouping into what it is, what it shows, and how it runs gives the seller
+ * three short decisions instead of one long one. Numbering is the sequence a
+ * clipboard form actually uses, not decoration.
+ */
 export default function AuctionForm({
   form,
   onFieldChange,
@@ -15,100 +38,163 @@ export default function AuctionForm({
   onRemoveImage,
   showErrors,
   errors,
-  categories = [],
+  leaves = [],
   categoriesLoading = false,
   lockPricingFields = false,
   submitError,
   isPending = false,
   submitLabel = 'Save',
-  pendingLabel = 'Saving…',
+  pendingLabel = 'Saving',
   cancelTo = '/',
   onSubmit,
   disabled = false,
 }) {
   const showError = (key) => showErrors && errors[key];
+  const describedBy = (key) => (showError(key) ? `${key}-error` : undefined);
+
+  const [suggestionDismissed, setSuggestionDismissed] = useState(false);
+  const [debouncedTitle, setDebouncedTitle] = useState(form.title);
+
+  // Debounced so the suggestion settles after typing rather than flickering
+  // through a new guess on every keystroke.
+  useEffect(() => {
+    const id = window.setTimeout(() => setDebouncedTitle(form.title), 300);
+    return () => window.clearTimeout(id);
+  }, [form.title]);
+
+  const suggestion = useMemo(
+    () => suggestCategory(debouncedTitle, leaves),
+    [debouncedTitle, leaves]
+  );
+
+  const FieldError = ({ name }) =>
+    showError(name) ? (
+      <p id={`${name}-error`} role="alert" className="mt-t2 text-micro text-hand">
+        {errors[name]}
+      </p>
+    ) : null;
 
   return (
-    <form onSubmit={onSubmit} className="space-y-5 rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
+    <form onSubmit={onSubmit} className="register space-y-t6 p-t5">
       {lockPricingFields && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          This listing has bids. You can update the title, description, images, and category only.
-        </div>
+        <Alert tone="caution" title="Bids received">
+          This lot already has bids, so its price and schedule are locked. Title, description, images and
+          category can still change.
+        </Alert>
       )}
 
-      <div>
-        <label className={labelClass} htmlFor="title">
-          Title
-        </label>
-        <input
-          id="title"
-          type="text"
-          value={form.title}
-          onChange={(e) => onFieldChange('title', e.target.value)}
-          placeholder="e.g. Omega Speedmaster Moonwatch"
-          className={inputClass}
-          disabled={disabled}
-        />
-        {showError('title') && <p className={errorClass}>{errors.title}</p>}
-      </div>
+      <Group
+        step={1}
+        title="What it is"
+        hint="Pick the most specific category that fits. Missing one? Email support@flashnow.app."
+      >
+        <div>
+          <label className="field-label" htmlFor="title">
+            Title
+          </label>
+          <input
+            id="title"
+            type="text"
+            value={form.title}
+            onChange={(e) => onFieldChange('title', e.target.value)}
+            placeholder="Omega Speedmaster Professional, 1969"
+            className="field"
+            disabled={disabled}
+            aria-invalid={Boolean(showError('title'))}
+            aria-describedby={describedBy('title')}
+          />
+          <FieldError name="title" />
+        </div>
 
-      <div>
-        <label className={labelClass} htmlFor="description">
-          Description
-        </label>
-        <textarea
-          id="description"
-          rows={4}
-          value={form.description}
-          onChange={(e) => onFieldChange('description', e.target.value)}
-          placeholder="Condition, authenticity, what's included…"
-          className={`${inputClass} resize-y`}
-          disabled={disabled}
-        />
-        {showError('description') && <p className={errorClass}>{errors.description}</p>}
-      </div>
+        <div>
+          <label className="field-label" htmlFor="description">
+            Description
+          </label>
+          <textarea
+            id="description"
+            rows={4}
+            value={form.description}
+            onChange={(e) => onFieldChange('description', e.target.value)}
+            placeholder="Condition, provenance, what is included."
+            className="field resize-y py-2"
+            disabled={disabled}
+            aria-invalid={Boolean(showError('description'))}
+            aria-describedby={describedBy('description')}
+          />
+          <FieldError name="description" />
+        </div>
 
-      <div>
-        <label className={labelClass} htmlFor="category">
-          Category
-        </label>
-        <select
-          id="category"
-          value={form.categoryId}
-          onChange={(e) => onFieldChange('categoryId', e.target.value)}
-          className={inputClass}
-          disabled={disabled || categoriesLoading}
-        >
-          <option value="">{categoriesLoading ? 'Loading…' : 'No category'}</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </div>
+        <div>
+          <label className="field-label" htmlFor="category">
+            Category
+          </label>
+          <CategoryCombobox
+            id="category"
+            leaves={leaves}
+            value={form.categoryId}
+            onChange={(id) => {
+              onFieldChange('categoryId', id);
+              setSuggestionDismissed(true);
+            }}
+            disabled={disabled}
+            loading={categoriesLoading}
+            error={showError('categoryId')}
+          />
+          <FieldError name="categoryId" />
 
-      <div>
-        <span className={labelClass}>Image URLs</span>
-        <div className="mt-1.5 space-y-2">
+          {/* The seller has already typed the title in this same group, so the
+              form can offer a category rather than making them find it. It
+              never applies itself: a silent wrong guess costs more than it
+              saves, and one tap is already the fast path. */}
+          {suggestion && !suggestionDismissed && suggestion.id !== form.categoryId && (
+            <div className="mt-t2 flex flex-wrap items-center gap-t2">
+              <span className="legend text-tick text-lume-faint">Suggested</span>
+              <button
+                type="button"
+                onClick={() => {
+                  onFieldChange('categoryId', suggestion.id);
+                  setSuggestionDismissed(true);
+                }}
+                className="legend inline-flex items-center gap-1.5 border border-radium px-2 py-1 text-tick text-radium transition-colors duration-jump hover:bg-radium hover:text-dial"
+              >
+                {suggestion.path}
+                <Icon name="add" className="text-[14px]" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setSuggestionDismissed(true)}
+                className="legend text-tick text-lume-faint transition-colors hover:text-lume"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+        </div>
+      </Group>
+
+      <Group step={2} title="What it shows" hint="The first image is the one bidders see on the board.">
+        <div className="space-y-t2">
           {form.images.map((url, i) => (
-            <div key={i} className="flex gap-2">
+            <div key={i} className="flex gap-t2">
+              <span className="legend numeral flex w-8 shrink-0 items-center justify-center text-tick text-lume-faint">
+                {String(i + 1).padStart(2, '0')}
+              </span>
               <input
                 type="url"
                 value={url}
                 onChange={(e) => onImageChange(i, e.target.value)}
-                placeholder="https://…"
-                className={`${inputClass} mt-0`}
+                placeholder="https://"
+                className="field"
                 disabled={disabled}
               />
               <button
                 type="button"
                 onClick={() => onRemoveImage(i)}
                 disabled={disabled}
-                className="flex shrink-0 items-center justify-center rounded-xl border border-neutral-300 px-3 text-neutral-500 transition-colors hover:bg-neutral-100 disabled:opacity-50"
-                aria-label="Remove image"
+                className="ctl-ghost shrink-0 !px-3 hover:border-hand hover:text-hand"
+                aria-label={`Remove image ${i + 1}`}
               >
-                <Icon name="close" className="text-[18px]" />
+                <Icon name="close" className="text-[16px]" />
               </button>
             </div>
           ))}
@@ -117,111 +203,111 @@ export default function AuctionForm({
           type="button"
           onClick={onAddImage}
           disabled={disabled}
-          className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-neutral-700 hover:text-neutral-900 disabled:opacity-50"
+          className="legend inline-flex items-center gap-1.5 text-tick text-lume-dim transition-colors hover:text-lume disabled:opacity-40"
         >
-          <Icon name="add" className="text-[18px]" />
-          Add another image
+          <Icon name="add" className="text-[16px]" />
+          Add image
         </button>
-        {showError('images') && <p className={errorClass}>{errors.images}</p>}
-      </div>
+        <FieldError name="images" />
+      </Group>
 
-      <div className="grid gap-5 sm:grid-cols-2">
-        <div>
-          <label className={labelClass} htmlFor="startingBid">
-            Starting bid ($)
-          </label>
-          <input
-            id="startingBid"
-            type="number"
-            min="1"
-            step="1"
-            value={form.startingBid}
-            onChange={(e) => onFieldChange('startingBid', e.target.value)}
-            placeholder="100"
-            className={inputClass}
-            disabled={disabled || lockPricingFields}
-          />
-          {showError('startingBid') && !lockPricingFields && <p className={errorClass}>{errors.startingBid}</p>}
+      <Group step={3} title="How it runs" hint="Lots run for minutes. A bid in the final minute extends it by 60 seconds.">
+        <div className="grid gap-t4 sm:grid-cols-2">
+          <div>
+            <label className="field-label" htmlFor="startingBid">
+              Opening bid ($)
+            </label>
+            <input
+              id="startingBid"
+              type="number"
+              min="1"
+              step="1"
+              value={form.startingBid}
+              onChange={(e) => onFieldChange('startingBid', e.target.value)}
+              placeholder="100"
+              className="field numeral"
+              disabled={disabled || lockPricingFields}
+              aria-invalid={Boolean(showError('startingBid') && !lockPricingFields)}
+              aria-describedby={lockPricingFields ? undefined : describedBy('startingBid')}
+            />
+            {!lockPricingFields && <FieldError name="startingBid" />}
+          </div>
+
+          <div>
+            <label className="field-label" htmlFor="buyNowPrice">
+              Buy now ($)
+            </label>
+            <input
+              id="buyNowPrice"
+              type="number"
+              min="1"
+              step="1"
+              value={form.buyNowPrice}
+              onChange={(e) => onFieldChange('buyNowPrice', e.target.value)}
+              placeholder="Optional"
+              className="field numeral"
+              disabled={disabled || lockPricingFields}
+              aria-invalid={Boolean(showError('buyNowPrice') && !lockPricingFields)}
+              aria-describedby={lockPricingFields ? undefined : describedBy('buyNowPrice')}
+            />
+            {!lockPricingFields && <FieldError name="buyNowPrice" />}
+          </div>
+
+          <div>
+            <span className="field-label">Runs for</span>
+            {/* Duration is a mode ring, not a dropdown: there are four
+                positions and the choice defines the whole product. */}
+            <div className="inline-flex border border-edge bg-sunken" role="group" aria-label="Duration">
+              {DURATION_OPTIONS.map((d, i) => (
+                <button
+                  key={d}
+                  type="button"
+                  disabled={disabled || lockPricingFields}
+                  onClick={() => onFieldChange('durationMinutes', d)}
+                  aria-pressed={form.durationMinutes === d}
+                  className={[
+                    'legend numeral px-3 py-2 text-tick transition-colors duration-jump disabled:opacity-40',
+                    i > 0 ? 'border-l border-steel' : '',
+                    form.durationMinutes === d
+                      ? 'bg-lume text-dial'
+                      : 'text-lume-faint hover:bg-high hover:text-lume',
+                  ].join(' ')}
+                >
+                  {d}m
+                </button>
+              ))}
+            </div>
+            {!lockPricingFields && <FieldError name="durationMinutes" />}
+          </div>
+
+          <div>
+            <label className="field-label" htmlFor="startsAt">
+              Opens at
+            </label>
+            <input
+              id="startsAt"
+              type="datetime-local"
+              value={form.startsAt}
+              onChange={(e) => onFieldChange('startsAt', e.target.value)}
+              className="field"
+              disabled={disabled || lockPricingFields}
+              aria-describedby="startsAt-help"
+            />
+            <p id="startsAt-help" className="mt-t2 text-micro text-lume-faint">
+              {lockPricingFields ? 'Locked after bids.' : 'Leave empty to open immediately.'}
+            </p>
+          </div>
         </div>
+      </Group>
 
-        <div>
-          <label className={labelClass} htmlFor="buyNowPrice">
-            Buy now price ($) — optional
-          </label>
-          <input
-            id="buyNowPrice"
-            type="number"
-            min="1"
-            step="1"
-            value={form.buyNowPrice}
-            onChange={(e) => onFieldChange('buyNowPrice', e.target.value)}
-            placeholder="—"
-            className={inputClass}
-            disabled={disabled || lockPricingFields}
-          />
-          {showError('buyNowPrice') && !lockPricingFields && <p className={errorClass}>{errors.buyNowPrice}</p>}
-        </div>
+      {submitError && <Alert title="Could not save">{submitError}</Alert>}
 
-        <div>
-          <label className={labelClass} htmlFor="duration">
-            Duration
-          </label>
-          <select
-            id="duration"
-            value={form.durationMinutes}
-            onChange={(e) => onFieldChange('durationMinutes', Number(e.target.value))}
-            className={inputClass}
-            disabled={disabled || lockPricingFields}
-          >
-            {DURATION_OPTIONS.map((d) => (
-              <option key={d} value={d}>
-                {d} minutes
-              </option>
-            ))}
-          </select>
-          {showError('durationMinutes') && !lockPricingFields && (
-            <p className={errorClass}>{errors.durationMinutes}</p>
-          )}
-        </div>
-
-        <div>
-          <label className={labelClass} htmlFor="startsAt">
-            Start time — optional
-          </label>
-          <input
-            id="startsAt"
-            type="datetime-local"
-            value={form.startsAt}
-            onChange={(e) => onFieldChange('startsAt', e.target.value)}
-            className={inputClass}
-            disabled={disabled || lockPricingFields}
-          />
-          <p className="mt-1 text-xs text-neutral-500">
-            {lockPricingFields ? 'Schedule locked after bids.' : 'Leave empty to start now.'}
-          </p>
-        </div>
-      </div>
-
-      {submitError && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
-          {submitError}
-        </div>
-      )}
-
-      <div className="flex items-center justify-end gap-3 border-t border-neutral-200 pt-5">
-        <Link
-          to={cancelTo}
-          className="rounded-xl px-4 py-2.5 text-sm font-bold text-neutral-600 no-underline hover:text-neutral-900"
-        >
+      <div className="flex items-center justify-end gap-t2 border-t border-steel pt-t4">
+        <Link to={cancelTo} className="ctl-ghost">
           Cancel
         </Link>
-        <button
-          type="submit"
-          disabled={disabled || isPending}
-          className="inline-flex items-center gap-2 rounded-xl bg-neutral-900 px-6 py-2.5 text-sm font-bold text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
-        >
+        <button type="submit" disabled={disabled || isPending} className="ctl-primary px-t6">
           {isPending ? pendingLabel : submitLabel}
-          {!isPending && <Icon name="save" className="text-[18px]" />}
         </button>
       </div>
     </form>

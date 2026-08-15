@@ -1,32 +1,40 @@
-import Icon from './Icon.jsx';
 
-export default function Stars({
-  score = 0,
-  size = 'md',
-  interactive = false,
-  value,
-  onChange,
-  className = '',
-}) {
+/**
+ * Rating as a five-segment gauge rather than five gold stars.
+ *
+ * A gold star is borrowed chrome from another world; a segmented bar is what
+ * an instrument uses to show a value against a fixed range, and it stays
+ * legible at 14px where a star outline does not.
+ */
+export default function Stars({ score = 0, size = 'md', interactive = false, value, onChange, className = '' }) {
   const displayScore = interactive ? value ?? 0 : score;
   const rounded = Math.max(0, Math.min(5, Math.round(displayScore)));
-  const iconClass = size === 'lg' ? 'text-[22px]' : size === 'sm' ? 'text-[16px]' : 'text-[18px]';
+  const h = size === 'lg' ? 'h-2.5' : size === 'sm' ? 'h-1.5' : 'h-2';
+  const w = size === 'lg' ? 'w-5' : size === 'sm' ? 'w-3' : 'w-4';
 
   if (interactive) {
     return (
-      <div className={['flex items-center gap-0.5', className].join(' ')} role="group" aria-label="Rating">
+      <div className={['flex items-center gap-1', className].join(' ')} role="group" aria-label="Rating">
         {Array.from({ length: 5 }, (_, i) => {
           const starValue = i + 1;
-          const filled = starValue <= (value ?? 0);
+          const lit = starValue <= (value ?? 0);
           return (
             <button
               key={starValue}
               type="button"
               onClick={() => onChange?.(starValue)}
-              className="text-amber-400 transition-transform hover:scale-110"
-              aria-label={`${starValue} star${starValue === 1 ? '' : 's'}`}
+              aria-label={`${starValue} out of 5`}
+              aria-pressed={lit}
+              className="group p-1"
             >
-              <Icon name={filled ? 'star' : 'star_border'} className={iconClass} />
+              <span
+                className={[
+                  'block transition-colors duration-jump',
+                  h,
+                  w,
+                  lit ? 'bg-radium' : 'bg-steel-bright group-hover:bg-edge',
+                ].join(' ')}
+              />
             </button>
           );
         })}
@@ -36,11 +44,11 @@ export default function Stars({
 
   return (
     <div
-      className={['flex items-center gap-0.5 text-amber-400', className].join(' ')}
-      aria-label={`${Number(score).toFixed(1)} out of 5 stars`}
+      className={['flex items-center gap-1', className].join(' ')}
+      aria-label={`${Number(score).toFixed(1)} out of 5`}
     >
       {Array.from({ length: 5 }, (_, i) => (
-        <Icon key={i} name={i < rounded ? 'star' : 'star_border'} className={iconClass} />
+        <span key={i} className={[h, w, i < rounded ? 'bg-radium' : 'bg-steel-bright'].join(' ')} />
       ))}
     </div>
   );

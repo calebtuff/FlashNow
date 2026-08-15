@@ -4,6 +4,7 @@ import { SOCKET_EVENTS } from 'shared/constants';
 import { connectSocket } from '../services/socket.js';
 import { getCurrentUserId } from '../services/currentUser.js';
 import { applyFeedAuctionEndPatch, applyFeedBidPatch } from '../utils/liveAuctionCache.js';
+import { useLiveTapeStore } from '../stores/liveTapeStore.js';
 
 /**
  * App-wide listener for live auction feed events.
@@ -11,10 +12,24 @@ import { applyFeedAuctionEndPatch, applyFeedBidPatch } from '../utils/liveAuctio
  */
 export default function useLiveAuctionSync() {
   const queryClient = useQueryClient();
+  const pushToTape = useLiveTapeStore((s) => s.push);
 
   const onFeedBid = useCallback(
     (payload) => {
       applyFeedBidPatch(queryClient, payload);
+
+      // The same event feeds the live tape. It is mounted in Layout, so the
+      // buffer fills from whatever page the viewer happens to be on and the
+      // tape is already populated by the time they reach the board.
+      if (payload.bidId && payload.title) {
+        pushToTape({
+          bidId: payload.bidId,
+          auctionId: payload.auctionId,
+          title: payload.title,
+          amount: payload.amount,
+          placedAt: payload.placedAt,
+        });
+      }
 
       const userId = getCurrentUserId();
       if (
@@ -27,7 +42,7 @@ export default function useLiveAuctionSync() {
         queryClient.invalidateQueries({ queryKey: ['wallet'] });
       }
     },
-    [queryClient]
+    [queryClient, pushToTape]
   );
 
   const onFeedAuctionEnd = useCallback(

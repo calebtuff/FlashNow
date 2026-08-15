@@ -2,22 +2,102 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ===========================================================================
+ * CHRONOGRAPH REGISTER  ·  seed e6065d04
+ *
+ * A lot is a timed event, so the interface is the instrument that times it.
+ * Graphite dial ground, aged-lume numerals, engraved steel scales, one red
+ * sweep hand.
+ *
+ * LAMP LAW. These three are not decoration and are never used for emphasis:
+ *   radium  = live, running, you are leading
+ *   caution = outbid, funds held, needs attention
+ *   hand    = under 60 seconds, destructive, irreversible
+ * Anything else uses lume at one of its three weights.
+ *
+ * Contrast is verified against every dial ground, not assumed. Filled lamp
+ * surfaces carry DARK legends, because white on the red lamp measures 3.42:1
+ * and fails, exactly as a real warning lamp uses a dark legend on a lit face.
+ * ========================================================================= */
+
+:root {
+  /* Dial grounds, case outward */
+  --dial: 14 16 19; /* #0E1013  the case, page ground */
+  --dial-raised: 23 26 31; /* #171A1F  a register's face */
+  --dial-high: 33 37 43; /* #21252B  hover, active row */
+  --dial-sunken: 8 9 11; /* #08090B  recessed track, input well */
+
+  /* Lume. Warm off-white, the way aged tritium reads. */
+  --lume: 242 240 234; /* #F2F0EA  16.7:1 on dial */
+  --lume-dim: 162 168 176; /* #A2A8B0   7.9:1 */
+  --lume-faint: 134 141 150; /* #868D96   5.7:1, and 4.59:1 on dial-high */
+
+  /* Engraving. Decorative hairlines and tick marks only: these are below the
+   * 3:1 floor and may never carry a control boundary. */
+  --steel: 44 49 56; /* #2C3138 */
+  --steel-bright: 61 68 77; /* #3D444D */
+
+  /* Control boundary. Held to WCAG 1.4.11, unlike the engraving above. */
+  --edge-control: 100 110 122; /* #646E7A  3.37:1 on a register face */
+
+  /* The three lamps */
+  --radium: 143 191 95; /* #8FBF5F  8.9:1 */
+  --radium-track: 46 58 32; /* unlit backing for a radium arc */
+  --caution: 255 176 0; /* #FFB000 10.4:1 */
+  --caution-track: 61 43 4;
+  /* #FF5449. Two earlier candidates were measured and rejected: #E4002B read
+   * 3.93:1 on the dial, and #FF4438 fell to 4.50:1 on the `high` hover
+   * surface, which is exactly where the sign-out control puts red text. */
+  --hand: 255 84 73;
+  --hand-track: 66 20 17;
+
+  /* Motion. A chronograph has exactly three motions and no others:
+   *   sweep   the seconds hand, continuous and perfectly linear
+   *   jump    a counter incrementing, discrete and instant
+   *   flyback the reset, fast and decelerating
+   * Scattered easing curves would be a different instrument. */
+  --sweep: linear;
+  --jump: cubic-bezier(0.2, 0, 0, 1);
+  --flyback: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --t-press: 90ms;
+  --t-jump: 140ms;
+  --t-flyback: 260ms;
+
+  /* Tick module. Every spacing value in the app is a multiple of 4px, so
+   * vertical rhythm reads as a ruled scale rather than as ad hoc margins. */
+  --tick: 4px;
+}
+
+html {
+  background-color: rgb(var(--dial));
+}
+
 html,
 body {
   height: 100%;
 }
 
 body {
-  @apply antialiased bg-[#f4f1ea] text-neutral-900;
-  font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  @apply bg-dial text-lume antialiased;
+  font-family: Archivo, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-synthesis-weight: none;
 }
 
-.font-headline {
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+/* Every measured value in the product is set in tabular figures, so a price
+ * ticking from 990 to 1,000 does not shift the digits beside it. */
+.numeral {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+  letter-spacing: -0.02em;
 }
 
-.font-display {
-  font-family: 'Space Grotesk', system-ui, sans-serif;
+/* Tick labels and dense table columns take the narrow cut. */
+.legend {
+  font-family: 'Archivo Narrow', Archivo, system-ui, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 600;
 }
 
 .material-symbols-outlined {
@@ -32,4 +112,262 @@ body {
   word-wrap: normal;
   direction: ltr;
   -webkit-font-smoothing: antialiased;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+.material-symbols-outlined.icon-filled {
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+@layer base {
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid rgb(var(--lume));
+    outline-offset: 2px;
+  }
+
+  :where(h1, h2, h3) {
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+  }
+
+  :where(p) {
+    text-wrap: pretty;
+  }
+
+  ::selection {
+    background: rgb(var(--radium));
+    color: rgb(var(--dial));
+  }
+
+  /* The dial ground is dark, so native form controls and scrollbars must be
+   * told, or the browser paints light chrome into the instrument. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: rgb(var(--dial-sunken));
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--steel-bright));
+    border-radius: 0;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--edge-control));
+  }
+}
+
+@layer components {
+  /* --- Surfaces ---------------------------------------------------------
+   * Instruments do not float. There are no drop shadows anywhere in this
+   * world: depth is an engraved hairline plus a one-pixel lit top edge, the
+   * way a machined bezel catches light. */
+  .register {
+    @apply relative bg-raised;
+    border: 1px solid rgb(var(--steel));
+    box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.04);
+  }
+
+  .well {
+    @apply bg-sunken;
+    border: 1px solid rgb(var(--steel));
+    box-shadow: inset 0 1px 2px 0 rgb(0 0 0 / 0.5);
+  }
+
+  /* --- Controls ---------------------------------------------------------
+   * A chronograph pusher: it moves down and it stops hard. No scale-up on
+   * hover, because a pusher does not grow when a finger approaches it. */
+  .ctl {
+    @apply inline-flex items-center justify-center gap-2 rounded-sm border px-4 text-sm font-semibold;
+    min-height: calc(var(--tick) * 11); /* 44px, the touch floor */
+    transition:
+      background-color var(--t-jump) var(--jump),
+      border-color var(--t-jump) var(--jump),
+      color var(--t-jump) var(--jump),
+      transform var(--t-press) var(--jump);
+  }
+
+  .ctl:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  .ctl:disabled {
+    @apply cursor-not-allowed opacity-40;
+  }
+
+  /* The primary action is lume-on-dark inverted: a lit pusher. */
+  .ctl-primary {
+    @apply ctl border-transparent bg-lume text-dial;
+  }
+  .ctl-primary:hover:not(:disabled) {
+    background-color: rgb(255 255 255);
+  }
+
+  /* Bidding is the one action that runs against the clock, so it takes the
+   * radium lamp. Dark legend on a lit face. */
+  .ctl-bid {
+    @apply ctl border-transparent bg-radium text-dial;
+  }
+  .ctl-bid:hover:not(:disabled) {
+    background-color: rgb(160 208 110);
+  }
+
+  .ctl-ghost {
+    @apply ctl text-lume-dim;
+    border-color: rgb(var(--edge-control));
+  }
+  .ctl-ghost:hover:not(:disabled) {
+    @apply bg-high text-lume;
+  }
+
+  .ctl-danger {
+    @apply ctl border-transparent bg-hand text-dial;
+  }
+
+  /* --- Fields -----------------------------------------------------------
+   * An input is a recessed well with an engraved boundary that meets the
+   * 3:1 control-contrast floor. */
+  .field {
+    @apply well w-full rounded-sm px-3 text-lume;
+    min-height: calc(var(--tick) * 11);
+    border-color: rgb(var(--edge-control));
+    font-size: 0.9375rem;
+    outline: none;
+    transition:
+      border-color var(--t-jump) var(--jump),
+      box-shadow var(--t-jump) var(--jump);
+  }
+
+  .field::placeholder {
+    color: rgb(var(--lume-faint));
+  }
+
+  .field:focus {
+    border-color: rgb(var(--lume));
+    box-shadow: inset 0 1px 2px 0 rgb(0 0 0 / 0.5), 0 0 0 1px rgb(var(--lume));
+  }
+
+  .field-label {
+    @apply legend mb-2 block text-[0.6875rem] text-lume-faint;
+  }
+
+  /* --- Lamps ------------------------------------------------------------
+   * A lamp always pairs its color with a word. Color alone never carries
+   * state, both for color-blind readers and because a real panel legends
+   * its lamps. */
+  .lamp {
+    @apply legend inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-[0.625rem];
+  }
+
+  .lamp-live {
+    @apply lamp bg-radium text-dial;
+  }
+  .lamp-lead {
+    @apply lamp text-radium;
+    background-color: rgb(var(--radium-track));
+  }
+  .lamp-caution {
+    @apply lamp text-caution;
+    background-color: rgb(var(--caution-track));
+  }
+  .lamp-critical {
+    @apply lamp bg-hand text-dial;
+  }
+  .lamp-off {
+    @apply lamp bg-high text-lume-faint;
+  }
+
+  /* The main column clears the fixed bottom navigation on small screens and
+   * drops back to ordinary rhythm once that bar is gone. An inline style
+   * cannot express the breakpoint, so it lives here. */
+  .main-pad {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 5.5rem);
+  }
+
+  @media (min-width: 768px) {
+    .main-pad {
+      padding-bottom: calc(var(--tick) * 12);
+    }
+  }
+
+  /* --- Engraved scale ---------------------------------------------------
+   * A ruled hairline with a heavier tick every fifth mark, drawn in CSS
+   * rather than as an image so it stays crisp at any width. */
+  .scale-rule {
+    height: 8px;
+    background-image:
+      repeating-linear-gradient(to right, rgb(var(--steel-bright)) 0 1px, transparent 1px 100%),
+      repeating-linear-gradient(to right, rgb(var(--edge-control)) 0 1px, transparent 1px 100%);
+    background-size:
+      calc(100% / 30) 4px,
+      calc(100% / 6) 8px;
+    background-repeat: repeat-x;
+    background-position: bottom left;
+  }
+}
+
+@layer utilities {
+  /* The sweep. One shared keyframe so every running arc on the board is on
+   * the same clock, and strictly linear: a seconds hand that eases is broken. */
+  @keyframes sweep-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+
+  .sweeping {
+    animation: sweep-pulse 1s var(--sweep) infinite;
+  }
+
+  /* A counter that just changed jumps, it does not fade. */
+  @keyframes jump-in {
+    from {
+      transform: translateY(-0.35em);
+      opacity: 0;
+    }
+  }
+
+  .jumped {
+    animation: jump-in var(--t-jump) var(--jump);
+  }
+
+  /* Flyback: the reset sweep a chronograph makes when content arrives. */
+  @keyframes flyback {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+
+  .flyback {
+    animation: flyback var(--t-flyback) var(--flyback) backwards;
+    animation-delay: calc(var(--row, 0) * 35ms);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* The pulsing sweep is the one piece of motion that must not simply
+   * vanish: it is how a running lot is told from a stalled one. It becomes
+   * a static lit state instead. */
+  .sweeping {
+    animation: none;
+    opacity: 1;
+  }
+
+  .ctl:active:not(:disabled) {
+    transform: none;
+  }
 }

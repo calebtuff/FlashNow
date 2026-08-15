@@ -2,23 +2,21 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import Icon from '../components/Icon.jsx';
-import AuctionCard from '../components/AuctionCard.jsx';
+import RegisterStack, { RegisterStackSkeleton } from '../components/RegisterStack.jsx';
+import PageHeader from '../components/PageHeader.jsx';
+import FilterPills from '../components/FilterPills.jsx';
+import EmptyState from '../components/EmptyState.jsx';
+import Pagination from '../components/Pagination.jsx';
+import Alert from '../components/Alert.jsx';
 import { api } from '../services/api.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import { isTerminal } from '../utils/auction.js';
 
 const STATUS_FILTERS = [
   { key: 'all', label: 'All', match: () => true },
-  { key: 'live', label: 'Live', match: (a) => a.status === 'live' },
-  {
-    key: 'scheduled',
-    label: 'Scheduled',
-    match: (a) => a.status === 'scheduled',
-  },
-  {
-    key: 'ended',
-    label: 'Ended',
-    match: (a) => ['ended', 'completed', 'cancelled'].includes(a.status),
-  },
+  { key: 'live', label: 'Running', match: (a) => a.status === 'live' && !isTerminal(a) },
+  { key: 'scheduled', label: 'Opens next', match: (a) => a.status === 'scheduled' },
+  { key: 'ended', label: 'Closed', match: (a) => isTerminal(a) },
 ];
 
 export default function FavoritesPage() {
@@ -32,9 +30,10 @@ export default function FavoritesPage() {
     enabled: isAuthenticated,
   });
 
-  const entries = useMemo(() => {
-    return (data?.favorites ?? []).map((row) => row.auction).filter(Boolean);
-  }, [data?.favorites]);
+  const entries = useMemo(
+    () => (data?.favorites ?? []).map((row) => row.auction).filter(Boolean),
+    [data?.favorites]
+  );
 
   const filtered = useMemo(() => {
     const matcher = STATUS_FILTERS.find((f) => f.key === filter)?.match ?? (() => true);
@@ -42,120 +41,60 @@ export default function FavoritesPage() {
   }, [entries, filter]);
 
   const pagination = data?.pagination;
-  const totalPages = pagination?.totalPages ?? 1;
+  const runningCount = entries.filter((a) => a.status === 'live' && !isTerminal(a)).length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="font-headline text-3xl font-extrabold text-neutral-900">Saved</h1>
-          <p className="mt-1 text-sm text-neutral-600">
-            {pagination?.total
-              ? `${pagination.total} saved ${pagination.total === 1 ? 'auction' : 'auctions'}`
-              : 'Auctions you have saved for later.'}
-          </p>
-        </div>
-        <Link
-          to="/search?status=live"
-          className="inline-flex items-center gap-2 rounded-xl border border-neutral-900 bg-white px-5 py-2.5 text-sm font-bold text-neutral-900 no-underline transition-colors hover:bg-neutral-50"
-        >
-          <Icon name="search" className="text-[18px]" />
-          Browse auctions
+    <div>
+      <PageHeader
+        title="Saved"
+        reading={pagination?.total ? String(pagination.total).padStart(2, '0') : '00'}
+        subtitle={
+          runningCount > 0
+            ? `${runningCount} of your saved lots ${runningCount === 1 ? 'is' : 'are'} running now.`
+            : 'Lots you are watching.'
+        }
+      >
+        <Link to="/" className="ctl-ghost">
+          <Icon name="stacked_bar_chart" className="text-[16px]" />
+          Board
         </Link>
+      </PageHeader>
+
+      <div className="mb-t4">
+        <FilterPills options={STATUS_FILTERS} value={filter} onChange={setFilter} label="Filter saved lots" />
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {STATUS_FILTERS.map((f) => (
-          <button
-            key={f.key}
-            type="button"
-            onClick={() => setFilter(f.key)}
-            className={[
-              'rounded-full border px-4 py-2 text-sm font-semibold transition-colors',
-              filter === f.key
-                ? 'border-neutral-900 bg-neutral-900 text-white'
-                : 'border-neutral-300 bg-white/70 text-neutral-800 hover:bg-white',
-            ].join(' ')}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      {isError && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
-          {error?.message || 'Could not load saved auctions.'}
-        </div>
-      )}
+      {isError && <Alert title="Could not load">{error?.message || 'Saved lots are unavailable.'}</Alert>}
 
       {isPending ? (
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map((k) => (
-            <div key={k} className="aspect-[3/4] animate-pulse rounded-2xl bg-neutral-200/80" />
-          ))}
-        </div>
+        <RegisterStackSkeleton count={3} />
       ) : entries.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-neutral-300 bg-white/60 px-6 py-16 text-center">
-          <Icon name="favorite" className="text-[40px] text-neutral-400" />
-          <p className="mt-2 font-headline text-lg font-bold text-neutral-800">Nothing saved yet</p>
-          <p className="mt-2 text-sm text-neutral-600">Tap the heart on any auction to save it here.</p>
-          <Link
-            to="/search?status=live"
-            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-neutral-900 px-5 py-2.5 text-sm font-bold text-white no-underline"
-          >
-            <Icon name="search" className="text-[18px]" />
-            Browse auctions
+        <EmptyState
+          icon="bookmark"
+          title="Nothing saved"
+          body="Save a lot from the board and it will wait here until it opens."
+        >
+          <Link to="/" className="ctl-primary">
+            Browse the board
           </Link>
-        </div>
+        </EmptyState>
       ) : filtered.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-neutral-300 bg-white/60 px-6 py-16 text-center">
-          <p className="font-headline text-lg font-bold text-neutral-800">No saved auctions in this filter</p>
-          <button
-            type="button"
-            onClick={() => setFilter('all')}
-            className="mt-6 rounded-xl bg-neutral-900 px-5 py-2.5 text-sm font-bold text-white"
-          >
+        <EmptyState
+          icon="filter_alt_off"
+          title="None in this state"
+          body="Your saved lots are all in another state right now."
+        >
+          <button type="button" onClick={() => setFilter('all')} className="ctl-primary">
             Show all
           </button>
-        </div>
+        </EmptyState>
       ) : (
-        <>
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map((auction) => (
-              <AuctionCard key={auction.id} a={auction} />
-            ))}
-          </div>
-
-          {pagination && totalPages > 1 && filter === 'all' && (
-            <div className="flex items-center justify-between">
-              <button
-                type="button"
-                disabled={page <= 1}
-                onClick={() => {
-                  setPage((p) => p - 1);
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
-                className="rounded-xl border border-neutral-300 px-4 py-2 text-sm font-semibold disabled:opacity-40"
-              >
-                Previous
-              </button>
-              <span className="text-sm text-neutral-600">
-                Page {page} of {totalPages}
-              </span>
-              <button
-                type="button"
-                disabled={page >= totalPages}
-                onClick={() => {
-                  setPage((p) => p + 1);
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
-                className="rounded-xl border border-neutral-300 px-4 py-2 text-sm font-semibold disabled:opacity-40"
-              >
-                Next
-              </button>
-            </div>
+        <div className="space-y-t6">
+          <RegisterStack auctions={filtered} />
+          {filter === 'all' && (
+            <Pagination page={page} totalPages={pagination?.totalPages ?? 1} onChange={setPage} />
           )}
-        </>
+        </div>
       )}
     </div>
   );

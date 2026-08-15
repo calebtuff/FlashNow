@@ -5,9 +5,12 @@ import Register from './Register.jsx';
  * showing between rows, so the stack reads as one instrument rather than as
  * a scatter of separate cards.
  */
-export function RegisterStackSkeleton({ count = 5 }) {
+export function RegisterStackSkeleton({ count = 5, label = 'Loading lots' }) {
   return (
-    <div className="space-y-px" aria-busy="true" aria-label="Loading lots">
+    // `label` exists because a surface may have its own name for what is
+    // loading. The board calls itself the board, and a screen reader should
+    // hear the same word a sighted user reads above the rows.
+    <div className="space-y-px" aria-busy="true" aria-label={label}>
       {Array.from({ length: count }, (_, k) => (
         <div key={k} className="register p-t4">
           <div className="flex gap-t4">

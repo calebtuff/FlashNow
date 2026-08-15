@@ -2,20 +2,26 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import Icon from '../components/Icon.jsx';
-import Register from '../components/Register.jsx';
+import RegisterStack, { RegisterStackSkeleton } from '../components/RegisterStack.jsx';
 import FilterPills from '../components/FilterPills.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import Alert from '../components/Alert.jsx';
 import { api } from '../services/api.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import useNow from '../hooks/useNow.js';
-import { currentPrice, isTerminal, money, remainingMs } from '../utils/auction.js';
+import { auctionTimeMeta, currentPrice, money } from '../utils/auction.js';
 
 const SORTS = [
   { key: 'closing', label: 'Closing' },
   { key: 'priceDesc', label: 'Price' },
   { key: 'bids', label: 'Bids' },
 ];
+
+/** A lot with no readable end time sorts last rather than to the front. */
+function endsAtMs(a) {
+  const t = a?.endsAt ? new Date(a.endsAt).getTime() : Number.NaN;
+  return Number.isNaN(t) ? Infinity : t;
+}
 
 /**
  * A ruled section head. The count is the reading; the name is the legend.
@@ -28,25 +34,6 @@ function Rule({ label, count, children }) {
         <span className="numeral text-body text-lume-faint">{String(count).padStart(2, '0')}</span>
       </h2>
       {children}
-    </div>
-  );
-}
-
-function BoardSkeleton() {
-  return (
-    <div className="space-y-px" aria-busy="true" aria-label="Loading the board">
-      {[0, 1, 2, 3, 4].map((k) => (
-        <div key={k} className="register p-t4">
-          <div className="flex gap-t4">
-            <div className="h-20 w-20 shrink-0 animate-pulse bg-high sm:h-24 sm:w-24" />
-            <div className="flex-1 space-y-t3">
-              <div className="scale-rule w-full opacity-40" />
-              <div className="h-7 w-24 animate-pulse bg-high" />
-              <div className="h-4 w-2/3 animate-pulse bg-high" />
-            </div>
-          </div>
-        </div>
-      ))}
     </div>
   );
 }
@@ -141,17 +128,35 @@ export default function HomePage() {
     const next = [];
     const over = [];
 
+    // Bucketed by the clock, not by the stored status, and deliberately by the
+    // same helper a register uses to decide what it prints.
+    //
+    // Status is a fact about the last fetch. A lot opens when the server's cron
+    // promotes it, which nothing tells the browser about: there is a socket
+    // event for a bid and one for a close, but none for an opening. Filing by
+    // status therefore left an open lot sitting under "Opens next" while the
+    // row inside it, which has always read the clock directly, counted down to
+    // its close. One derivation for both means they cannot disagree, and since
+    // `now` is a dependency here the lot changes section on the tick it opens.
     for (const a of all) {
-      if (isTerminal(a)) over.push(a);
-      else if (a.status === 'scheduled' || a.status === 'draft') next.push(a);
-      else live.push(a);
+      const { kind } = auctionTimeMeta(a, now);
+      if (kind === 'ended') over.push(a);
+      else if (kind === 'scheduled') next.push(a);
+      else if (kind === 'live') live.push(a);
+      // 'unknown' is an entry with no lot behind it; there is nothing to draw.
     }
 
     const bySort = (x, y) => {
       if (sort === 'priceDesc') return currentPrice(y) - currentPrice(x);
       if (sort === 'bids') return (y._count?.bids ?? 0) - (x._count?.bids ?? 0);
       // Default: whatever closes first is the thing you can still act on.
-      return (remainingMs(x, now) ?? Infinity) - (remainingMs(y, now) ?? Infinity);
+      //
+      // Compared on the end time itself rather than on time remaining. The two
+      // orderings are identical, because a shared `now` subtracts out of both
+      // sides, but time remaining made the comparison a function of the tick,
+      // so the board re-sorted every second and rows could swap places under
+      // the cursor as someone reached for one.
+      return endsAtMs(x) - endsAtMs(y);
     };
 
     return {
@@ -159,12 +164,21 @@ export default function HomePage() {
       opening: [...next].sort(
         (x, y) => new Date(x.startsAt ?? 0).getTime() - new Date(y.startsAt ?? 0).getTime()
       ),
+      // The server caps this bucket too, but the cap has to be reapplied here:
+      // a lot that closes mid-session is patched to a terminal status by the
+      // live socket and re-buckets into this list without a refetch, so over a
+      // long session the tail would otherwise keep growing.
       closed: [...over]
         .sort((x, y) => new Date(y.endsAt ?? 0).getTime() - new Date(x.endsAt ?? 0).getTime())
         .slice(0, 5),
       leadingCount: userId ? live.filter((a) => a.currentWinnerId === userId).length : 0,
     };
   }, [data?.auctions, sort, now, userId]);
+
+  // Below the server's cap the rows are the truth, and they stay accurate as
+  // the live socket patches lots closed. Above it, only the server knows.
+  const liveTruncated = Boolean(data?.counts?.liveTruncated);
+  const liveTotal = liveTruncated ? data.counts.live : running.length;
 
   return (
     <div>
@@ -178,11 +192,14 @@ export default function HomePage() {
       )}
 
       {isPending ? (
-        <BoardSkeleton />
+        <RegisterStackSkeleton label="Loading the board" />
       ) : (
         <div className="space-y-t8">
           <section>
-            <Rule label="Running now" count={running.length}>
+            {/* The heading states the real number of running lots, which is
+                also what the bezel prints, so the two never disagree. When the
+                board is capped, the line beneath says what is actually listed. */}
+            <Rule label="Running now" count={liveTotal}>
               <FilterPills options={SORTS} value={sort} onChange={setSort} label="Sort the board" />
             </Rule>
 
@@ -198,35 +215,38 @@ export default function HomePage() {
                 </Link>
               </EmptyState>
             ) : (
-              // Hairline gaps on a steel ground make the stack read as one
-              // ruled panel rather than a scatter of separate cards.
-              <div className="space-y-px bg-steel">
-                {running.map((a, i) => (
-                  <Register key={a.id} auction={a} row={i} />
-                ))}
-              </div>
+              <RegisterStack auctions={running} />
+            )}
+
+            {liveTruncated && (
+              <p className="mt-t3 text-body text-lume-dim">
+                Listing the {running.length} closing soonest.{' '}
+                <Link to="/search?status=live" className="text-lume">
+                  See all {liveTotal} running lots
+                </Link>
+                .
+              </p>
             )}
           </section>
 
           {opening.length > 0 && (
             <section>
               <Rule label="Opens next" count={opening.length} />
-              <div className="space-y-px bg-steel">
-                {opening.map((a, i) => (
-                  <Register key={a.id} auction={a} row={i} />
-                ))}
-              </div>
+              <RegisterStack auctions={opening} />
             </section>
           )}
 
           {closed.length > 0 && (
             <section>
               <Rule label="Just closed" count={closed.length} />
-              <div className="space-y-px bg-steel opacity-60 transition-opacity duration-flyback hover:opacity-100">
-                {closed.map((a, i) => (
-                  <Register key={a.id} auction={a} row={i} />
-                ))}
-              </div>
+              {/* No dimming. This stack used to rest at 60% and return to full
+                  on hover, which does not exist on touch, so on a phone the
+                  section was permanently faded with no way to restore it, and
+                  its tick legends fell under the contrast floor at that
+                  opacity. A closed lot already reads as spent without help: an
+                  unlit lamp, a drained arc, and a wall-clock time where the
+                  running rows carry a countdown. */}
+              <RegisterStack auctions={closed} />
             </section>
           )}
         </div>

@@ -7,28 +7,71 @@ import { computeExtendedEndsAt } from '../utils/bidExtension.js';
 import { emitBidUpdate, emitAuctionEnd } from '../socket/emitters.js';
 import { createNotification, notifySafely } from '../services/notificationService.js';
 import { buyNowAuction as executeBuyNow } from '../services/buyNowService.js';
+import { descendantIds, isSelectable } from './categories.controller.js';
+
+/** Caps the clause count so a pasted paragraph cannot build a monstrous query. */
+const MAX_SEARCH_TERMS = 8;
+
+/* ---------------------------------------------------------------------------
+ * The board
+ *
+ * Three bounded queries rather than one unbounded read of the table. What the
+ * board is for is everything running, the lots about to open, and the handful
+ * that just closed; reading every auction ever created meant a payload that
+ * grew without limit and a client that mounted a live countdown per row.
+ *
+ * The status filters are also load-bearing rather than cosmetic. `draft` is the
+ * schema default, so an unfiltered read published every seller's unlisted lot
+ * on the front page, and `cancelled` lots have no reason to be advertised.
+ * ------------------------------------------------------------------------- */
+const BOARD_LIVE_LIMIT = 60;
+const BOARD_OPENING_LIMIT = 20;
+const BOARD_CLOSED_LIMIT = 5;
+const BOARD_OPENING_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+const BOARD_INCLUDE = {
+  seller: { select: { id: true, username: true, avatarUrl: true } },
+  category: true,
+  _count: { select: { bids: true } },
+};
 
 export const getAllAuctions = async (req, res) => {
   try {
-    const auctions = await prisma.auction.findMany({
-      include: {
-        seller: {
-          select: { id: true, username: true, avatarUrl: true },
-        },
-        category: true,
-        _count: { select: { bids: true } },
-      },
-      orderBy: { createdAt: 'desc' },
+    const opensBy = new Date(Date.now() + BOARD_OPENING_WINDOW_MS);
+
+    const [live, opening, closed, liveTotal] = await Promise.all([
+      prisma.auction.findMany({
+        where: { status: 'live' },
+        include: BOARD_INCLUDE,
+        // Whatever closes first is the thing a bidder can still act on, so that
+        // is what survives the cap.
+        orderBy: { endsAt: 'asc' },
+        take: BOARD_LIVE_LIMIT,
+      }),
+      prisma.auction.findMany({
+        // Bounded by start time, not by now: a lot whose start has passed but
+        // which the promoter has not flipped to live yet still belongs here.
+        where: { status: 'scheduled', startsAt: { lte: opensBy } },
+        include: BOARD_INCLUDE,
+        orderBy: { startsAt: 'asc' },
+        take: BOARD_OPENING_LIMIT,
+      }),
+      prisma.auction.findMany({
+        where: { status: { in: ['ended', 'completed'] } },
+        include: BOARD_INCLUDE,
+        orderBy: { endsAt: 'desc' },
+        take: BOARD_CLOSED_LIMIT,
+      }),
+      prisma.auction.count({ where: { status: 'live' } }),
+    ]);
+
+    res.json({
+      success: true,
+      auctions: [...live, ...opening, ...closed].map(formatAuctionForApi),
+      // The list is capped, so the true running count is no longer something
+      // the client can get by counting rows. The bezel prints it permanently.
+      counts: { live: liveTotal, liveTruncated: live.length < liveTotal },
     });
-
-    const formatted = auctions.map(a => ({
-      ...a,
-      startingBid: parseFloat(a.startingBid),
-      buyNowPrice: a.buyNowPrice ? parseFloat(a.buyNowPrice) : null,
-      currentBid: a.currentBid ? parseFloat(a.currentBid) : null,
-    }));
-
-    res.json({ success: true, auctions: formatted });
   } catch (error) {
     console.error('getAllAuctions error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch auctions' });
@@ -171,6 +214,15 @@ export const createAuction = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'durationMinutes must be between 5 and 15',
+      });
+    }
+
+    // A lot must be filed against a category that has no subcategories, or it
+    // is invisible to anyone browsing a specific one.
+    if (categoryId && !(await isSelectable(categoryId))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Choose a specific subcategory so buyers browsing can find this lot',
       });
     }
 
@@ -346,6 +398,7 @@ export const placeBid = async (req, res) => {
       previousWinnerId: result.previousWinnerId,
       endsAt: result.endsAt.toISOString(),
       extended: result.extended,
+      title: result.auctionTitle,
       bid: {
         id: result.bid.id,
         amount: parseFloat(result.bid.amount),
@@ -489,6 +542,15 @@ export const updateAuction = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Buy now price must be higher than starting bid',
+      });
+    }
+
+    // Same rule as create, but only when the seller is actually changing the
+    // category: a pre-existing lot still filed under a parent stays editable.
+    if (body.categoryId !== undefined && body.categoryId && !(await isSelectable(body.categoryId))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Choose a specific subcategory so buyers browsing can find this lot',
       });
     }
 
@@ -757,7 +819,13 @@ export const searchAuctions = async (req, res) => {
 
     const where = {};
 
-    if (categoryId) where.categoryId = categoryId;
+    // A category filter matches the category itself plus its subcategories.
+    // The category itself must be included: lots created before the taxonomy
+    // gained a second level still point at what is now a parent.
+    if (categoryId) {
+      const ids = await descendantIds(categoryId);
+      where.categoryId = ids.length > 1 ? { in: ids } : categoryId;
+    }
 
     if (status) {
       where.status = status;
@@ -765,11 +833,20 @@ export const searchAuctions = async (req, res) => {
       where.status = { in: ['live', 'scheduled'] };
     }
 
-    if (q) {
-      where.OR = [
-        { title: { contains: q, mode: 'insensitive' } },
-        { description: { contains: q, mode: 'insensitive' } },
-      ];
+    // Match each word independently rather than the whole phrase. The previous
+    // `contains: q` compiled to LIKE '%NBA jersey%', so "jersey NBA" found
+    // nothing and neither did "NBA jersey" against a lot titled
+    // "Chicago Bulls Jordan #23 jersey".
+    const terms = q ? q.split(/\s+/).filter(Boolean).slice(0, MAX_SEARCH_TERMS) : [];
+    const termClause = (term) => ({
+      OR: [
+        { title: { contains: term, mode: 'insensitive' } },
+        { description: { contains: term, mode: 'insensitive' } },
+      ],
+    });
+
+    if (terms.length > 0) {
+      where.AND = terms.map(termClause);
     }
 
     if (minPrice !== undefined || maxPrice !== undefined) {
@@ -797,24 +874,41 @@ export const searchAuctions = async (req, res) => {
         orderBy = { endsAt: 'asc' };
     }
 
-    const [auctions, total] = await Promise.all([
-      prisma.auction.findMany({
-        where,
-        include: {
-          seller: { select: { id: true, username: true, avatarUrl: true } },
-          category: true,
-          _count: { select: { bids: true } },
-        },
-        orderBy,
-        skip,
-        take: limit,
-      }),
-      prisma.auction.count({ where }),
-    ]);
+    const runQuery = (finalWhere) =>
+      Promise.all([
+        prisma.auction.findMany({
+          where: finalWhere,
+          include: {
+            seller: { select: { id: true, username: true, avatarUrl: true } },
+            category: true,
+            _count: { select: { bids: true } },
+          },
+          orderBy,
+          skip,
+          take: limit,
+        }),
+        prisma.auction.count({ where: finalWhere }),
+      ]);
+
+    let [auctions, total] = await runQuery(where);
+
+    // Requiring every word narrows hard. When a multi-word query finds nothing,
+    // fall back once to "any word" and label the response, so the UI can say
+    // it is showing partial matches instead of rendering an empty state for a
+    // query whose words plainly exist in the catalogue.
+    let partial = false;
+    if (total === 0 && terms.length > 1) {
+      const loose = { ...where };
+      delete loose.AND;
+      loose.OR = terms.flatMap((term) => termClause(term).OR);
+      [auctions, total] = await runQuery(loose);
+      partial = total > 0;
+    }
 
     return res.json({
       success: true,
       query: { q, categoryId, status, minPrice, maxPrice, sortBy, page, limit },
+      partial,
       results: auctions.map(formatAuctionForApi),
       pagination: {
         page,

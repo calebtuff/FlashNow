@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import Icon from '../components/Icon.jsx';
 import RegisterStack, { RegisterStackSkeleton } from '../components/RegisterStack.jsx';
+import LiveTape from '../components/LiveTape.jsx';
 import FilterPills from '../components/FilterPills.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import Alert from '../components/Alert.jsx';
@@ -262,6 +263,7 @@ export default function HomePage() {
       ) : (
         <div className="space-y-t8">
           <BoardSummary running={running} opening={opening} liveTotal={liveTotal} now={now} />
+          <LiveTape />
 
           <section>
             {/* The heading states the real number of running lots, which is
